@@ -25,7 +25,10 @@ class AuditorAgent(Agent):
     name = "Auditor"
     role = "arbiter"
     skills: ClassVar[list[str]] = [
-        "policy-check", "human-approval-request", "audit-log-write", "evidence-verify"
+        "policy-check",
+        "human-approval-request",
+        "audit-log-write",
+        "evidence-verify",
     ]
 
     def handle_risk_profile(self, risk_profile: RiskProfile) -> RemediationOrder:

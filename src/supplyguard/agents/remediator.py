@@ -47,7 +47,9 @@ class RemediatorAgent(Agent):
                 f"> ⚠️ SupplyGuard blocked this dependency change.\n\n"
                 f"{order.notes}\n\n"
                 f"Evidence:\n"
-                + "\n".join(f"- {ev.skill}: {ev.summary}" for ev in order.risk_profile.evidence_chain)
+                + "\n".join(
+                    f"- {ev.skill}: {ev.summary}" for ev in order.risk_profile.evidence_chain
+                )
             )
         elif order.strategy == "bump-version":
             artifacts["action_taken"] = "created_upgrade_pr"

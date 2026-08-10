@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 
 from supplyguard.runtime.local_orchestrator import LocalOrchestrator
 from supplyguard.skills.hallucination_check import HallucinationCheckSkill
@@ -69,3 +71,32 @@ def test_response_creates_an_upgrade_pr_for_a_critical_cve() -> None:
     assert result["verdict"] == "require_human_review"
     assert result["remediation"]["action_taken"] == "created_upgrade_pr"
     assert result["audit_seal"]["status"] == "sealed"
+
+
+def test_manual_event_can_scan_a_local_npm_project(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"lodash": "^4.17.4"}}), encoding="utf-8"
+    )
+    (tmp_path / "package-lock.json").write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {"node_modules/lodash": {"version": "4.17.4"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_workflow(
+        {
+            "session_id": "local-scan-test",
+            "source": "manual",
+            "repo_url": tmp_path.as_uri(),
+            "repo_path": str(tmp_path),
+            "commit_sha": "local-working-tree",
+            "changes": [],
+        }
+    )
+
+    assert result["risk_level"] == "critical"
+    assert result["remediation"]["action_taken"] == "created_upgrade_pr"
