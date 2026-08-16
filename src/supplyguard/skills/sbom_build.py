@@ -1,100 +1,103 @@
-"""S01: build a minimal npm SBOM from a local project manifest and lockfile."""
+"""S01: sbom-build skill implementation (npm lockfile, v2/v3).
+
+Parses a package-lock.json into a dependency graph: nodes carry name, version,
+license, direct/transitive flag, and their immediate dependencies. This is the
+foundation of the "shared engine" — both the guard and response modes consume
+its output.
+
+v1 supports npm lockfile v2/v3 (`packages` key). Older v1 lockfiles (nested
+`dependencies`) are reported as a build error rather than silently mis-parsed.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
 
-from supplyguard.models.messages import DependencyChange
+from .base import Skill
 
 
 class SbomBuildInput(BaseModel):
-    """A local npm project to inspect."""
+    """Input for sbom-build."""
 
-    repo_path: str
-    include_dev_dependencies: bool = False
+    ecosystem: str = "npm"
+    lockfile_path: str = ""
+    include_dev: bool = False
+
+
+class PackageNode(BaseModel):
+    """A single node in the dependency graph."""
+
+    name: str
+    version: str = ""
+    license: str | None = None
+    direct: bool = False
+    dependencies: list[str] = Field(default_factory=list)
 
 
 class SbomBuildOutput(BaseModel):
-    """A partial SBOM suitable for the Analyst workflow."""
+    """Output for sbom-build."""
 
-    repo_path: str
-    manifest_path: str
-    lockfile_path: str | None = None
-    dependencies: list[DependencyChange] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
+    sbom_id: str
+    packages: list[PackageNode] = Field(default_factory=list)
+    build_errors: list[str] = Field(default_factory=list)
 
 
-class SbomBuildSkill:
-    """Parse direct npm dependencies without running package-manager scripts."""
+class SbomBuildSkill(Skill[SbomBuildInput, SbomBuildOutput]):
+    """Build a dependency graph from an npm lockfile."""
 
     name = "sbom-build"
-    description = "Build a direct-dependency SBOM from package.json and package-lock.json"
+    description = "Parse a lockfile into a dependency graph / SBOM snapshot"
 
     def run(self, input_data: SbomBuildInput) -> SbomBuildOutput:
-        """Return declared dependencies with resolved versions when available."""
-        repo_path = Path(input_data.repo_path).expanduser().resolve()
-        manifest_path = repo_path / "package.json"
-        if not manifest_path.is_file():
-            msg = f"No package.json found in {repo_path}"
-            raise ValueError(msg)
+        path = input_data.lockfile_path
+        sbom_id = hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
+
+        if not path or not Path(path).is_file():
+            return SbomBuildOutput(
+                sbom_id=sbom_id,
+                build_errors=[f"lockfile not found: {path or '(empty path)'}"],
+            )
 
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            msg = f"Invalid package.json: {exc.msg}"
-            raise ValueError(msg) from exc
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return SbomBuildOutput(sbom_id=sbom_id, build_errors=[f"parse error: {exc}"])
 
-        declared = dict(manifest.get("dependencies", {}))
-        if input_data.include_dev_dependencies:
-            declared.update(manifest.get("devDependencies", {}))
+        errors: list[str] = []
+        packages: list[PackageNode] = []
 
-        lockfile_path = repo_path / "package-lock.json"
-        lock_data: dict[str, Any] = {}
-        warnings: list[str] = []
-        if lockfile_path.is_file():
-            try:
-                lock_data = json.loads(lockfile_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                warnings.append("package-lock.json is invalid; using declared versions only.")
-        else:
-            warnings.append("package-lock.json not found; using declared versions only.")
-
-        dependencies = [
-            DependencyChange(
-                package_name=name,
-                old_version=self._locked_version(lock_data, name),
-                new_version=str(version),
-                is_new=self._locked_version(lock_data, name) is None,
-                ecosystem="npm",
-                context_text=(
-                    f"Dependency discovered in package.json: {name}; "
-                    f"declared={version}; locked={self._locked_version(lock_data, name) or 'unresolved'}"
-                ),
+        if "packages" not in data:
+            return SbomBuildOutput(
+                sbom_id=sbom_id,
+                build_errors=["unsupported lockfile format (missing 'packages'; v1 nested lockfiles not supported)"],
             )
-            for name, version in sorted(declared.items())
-        ]
 
-        return SbomBuildOutput(
-            repo_path=str(repo_path),
-            manifest_path=str(manifest_path),
-            lockfile_path=str(lockfile_path) if lockfile_path.is_file() else None,
-            dependencies=dependencies,
-            warnings=warnings,
-        )
+        pkg_map: dict = data["packages"]
+        root = pkg_map.get("", {})
+        root_deps: set[str] = set((root.get("dependencies") or {}).keys())
 
-    @staticmethod
-    def _locked_version(lock_data: dict[str, Any], package_name: str) -> str | None:
-        """Read a direct package version from npm lockfile v1, v2, or v3."""
-        packages = lock_data.get("packages", {})
-        package_info = packages.get(f"node_modules/{package_name}", {})
-        if isinstance(package_info, dict) and isinstance(package_info.get("version"), str):
-            return package_info["version"]
+        for key, meta in pkg_map.items():
+            if key == "":
+                continue
+            if not isinstance(meta, dict):
+                errors.append(f"unexpected node shape for '{key}'")
+                continue
+            if not input_data.include_dev and meta.get("dev"):
+                continue
 
-        dependency_info = lock_data.get("dependencies", {}).get(package_name, {})
-        if isinstance(dependency_info, dict) and isinstance(dependency_info.get("version"), str):
-            return dependency_info["version"]
-        return None
+            name = key.removeprefix("node_modules/")
+            packages.append(
+                PackageNode(
+                    name=name,
+                    version=meta.get("version", ""),
+                    license=meta.get("license"),
+                    direct=name in root_deps,
+                    dependencies=list((meta.get("dependencies") or {}).keys()),
+                )
+            )
+
+        return SbomBuildOutput(sbom_id=sbom_id, packages=packages, build_errors=errors)

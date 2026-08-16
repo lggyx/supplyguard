@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import ClassVar
 
 from supplyguard.models.messages import (
@@ -41,15 +42,30 @@ class SentinelAgent(Agent):
             changes_raw = message.get("changes", [])
             repo_path = message.get("repo_path")
             if not changes_raw and repo_path:
+                lockfile_path = Path(repo_path) / "package-lock.json"
                 sbom = self.sbom_build_skill.run(
                     SbomBuildInput(
-                        repo_path=str(repo_path),
-                        include_dev_dependencies=bool(
+                        lockfile_path=str(lockfile_path),
+                        include_dev=bool(
                             message.get("include_dev_dependencies", False)
                         ),
                     )
                 )
-                changes_raw = [change.model_dump() for change in sbom.dependencies]
+                changes_raw = [
+                    {
+                        "package_name": node.name,
+                        "old_version": node.version if not node.direct else None,
+                        "new_version": node.version if node.direct else None,
+                        "is_new": node.direct,
+                        "ecosystem": "npm",
+                        "context_text": (
+                            f"Dependency discovered in package-lock.json: {node.name}; "
+                            f"version={node.version}; direct={node.direct}; "
+                            f"license={node.license or 'unknown'}"
+                        ),
+                    }
+                    for node in sbom.packages
+                ]
             source = EventSource(message.get("source", "manual"))
             changes = []
             for raw_change in changes_raw:
