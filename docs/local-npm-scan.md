@@ -20,4 +20,4 @@ uv run python src/supplyguard/demo/scan_repository.py <目标项目目录> --inc
 - 将扫描结果转换为既有的 Sentinel → Analyst → Auditor → Remediator 流程。
 - 通过本地 CVE 规则库和 npm Registry / 离线相似度回退策略进行风险判断。
 
-限制：真实 OSV/GHSA 查询、完整传递依赖图、GitHub PR 创建和 AgentTeams 运行时接入仍在后续阶段。
+限制：真实 OSV/GHSA 查询、完整传递依赖图和 GitHub PR 创建仍在后续阶段。

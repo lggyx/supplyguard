@@ -1,8 +1,8 @@
-"""Local in-process orchestrator for rapid development and demos.
+"""Local in-process orchestrator.
 
-This is a lightweight stand-in for AgentTeams/HiClaw. It wires Agent instances
-together directly, allowing the business logic to be tested before the real
-framework integration is complete.
+Wires Agent instances together directly inside one process. The business layer
+(Agents, Skills, message schemas) stays independent of this orchestration
+mechanism, so a different runtime can be swapped in later without rewrites.
 """
 
 from __future__ import annotations
