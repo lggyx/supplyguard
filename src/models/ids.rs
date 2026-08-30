@@ -61,6 +61,11 @@ impl TimestampMillis {
         Self(millis)
     }
 
+    /// Wraps a raw millisecond value (e.g. read back from storage).
+    pub fn from_u64(millis: u64) -> Self {
+        Self(millis)
+    }
+
     /// Returns the raw millisecond value.
     pub fn as_u64(&self) -> u64 {
         self.0
