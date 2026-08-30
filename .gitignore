@@ -9,3 +9,7 @@ target/
 .DS_Store
 .vscode/
 .idea/
+
+# Local audit database (created by CLI runs)
+supplyguard-audit.db
+supplyguard-audit.db-*
