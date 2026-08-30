@@ -7,5 +7,6 @@
 #![forbid(unsafe_code)]
 
 pub mod audit;
+pub mod mcp;
 pub mod models;
 pub mod security;
