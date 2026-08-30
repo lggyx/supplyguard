@@ -5,172 +5,104 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SupplyGuard Console</title>
   <link rel="stylesheet" href="/assets/css/app.css" />
-  <script defer src="/vendor/alpine.min.js"></script>
   <script src="/vendor/echarts.min.js"></script>
   <script type="module" src="/assets/js/app.js"></script>
 </head>
 <body>
-  <div id="app" x-data="console" x-init="init()">
+  <div id="app">
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-mark">SG</span>
         <span class="brand-name">SupplyGuard</span>
       </div>
-      <nav class="nav">
-        <button class="nav-item" :class="{active: view==='overview'}" @click="show('overview')">
-          总览 <span class="nav-dot" :class="liveClass"></span>
-        </button>
-        <button class="nav-item" :class="{active: view==='scans'}" @click="show('scans')">扫描详情</button>
-        <button class="nav-item" :class="{active: view==='timeline'}" @click="show('timeline')">裁决时间线</button>
-        <button class="nav-item" :class="{active: view==='audit'}" @click="show('audit')">审计链</button>
+      <nav class="nav" id="nav">
+        <button class="nav-item" data-view="overview">总览 <span class="nav-dot" id="navDot"></span></button>
+        <button class="nav-item" data-view="scans">扫描详情</button>
+        <button class="nav-item" data-view="timeline">裁决时间线</button>
+        <button class="nav-item" data-view="audit">审计链</button>
       </nav>
       <div class="sidebar-footer">
-        <div class="conn" :class="connState"><span class="conn-dot"></span><span x-text="connLabel"></span></div>
+        <div class="conn" id="conn"><span class="conn-dot"></span><span id="connLabel">连接中…</span></div>
       </div>
     </aside>
     <main class="main">
       <header class="topbar">
-        <h1 x-text="title"></h1>
+        <h1 id="title">总览 Overview</h1>
         <div class="actions">
-          <input class="input" type="text" x-model="scanPath" placeholder="项目目录路径，如 fixtures/demo-app" />
-          <button class="btn primary" @click="triggerScan()" :disabled="busy">运行扫描</button>
-          <button class="btn" @click="triggerDemoGuard()" :disabled="busy">守门演示</button>
+          <input class="input" id="scanPath" type="text" value="fixtures/demo-app" placeholder="项目目录路径，如 fixtures/demo-app" />
+          <button class="btn primary" id="btnScan">运行扫描</button>
+          <button class="btn" id="btnGuard">守门演示</button>
         </div>
       </header>
-      <div class="statusbar" x-show="connState==='off'" x-transition.opacity>连接断开，重连中…（SSE 自动退避重连 ≤5s）</div>
+      <div class="statusbar hidden" id="reconnBar">连接断开，重连中…（SSE 自动退避重连 ≤5s）</div>
+      <div class="statusbar error hidden" id="errorBar">
+        <span id="errorText">数据加载失败</span>
+        <button class="btn small" id="btnRetry">重试</button>
+      </div>
 
       <!-- Overview -->
-      <section x-show="view==='overview'" class="view">
-        <div class="cards">
-          <template x-for="c in riskCards()" :key="c.label">
-            <div class="card stat" :class="c.cls">
-              <div class="stat-num" x-text="c.value">0</div>
-              <div class="stat-label" x-text="c.label"></div>
-            </div>
-          </template>
-        </div>
+      <section class="view" id="view-overview">
+        <div class="cards" id="statCards"></div>
         <div class="panel">
           <h2>最近扫描</h2>
-          <div class="empty" x-show="recent.length===0">暂无扫描记录 —— 运行一次扫描试试</div>
-          <table class="table" x-show="recent.length>0">
+          <div class="skeleton-lines hidden" id="recentSkeleton">
+            <div class="skel skel-line"></div><div class="skel skel-line"></div><div class="skel skel-line"></div>
+          </div>
+          <div class="empty hidden" id="recentEmpty">暂无扫描记录 —— 运行一次扫描试试</div>
+          <table class="table hidden" id="recentTable">
             <thead><tr><th>会话</th><th>来源</th><th>风险</th><th>裁决</th></tr></thead>
-            <tbody>
-              <template x-for="r in recent" :key="r.session_id">
-                <tr>
-                  <td class="mono" x-text="r.session_id"></td>
-                  <td x-text="r.source"></td>
-                  <td><span class="pill" :class="riskCls(r.risk_level)" x-text="r.risk_level"></span></td>
-                  <td><span class="pill" :class="verdictCls(r.verdict)" x-text="r.verdict"></span></td>
-                </tr>
-              </template>
-            </tbody>
+            <tbody id="recentBody"></tbody>
           </table>
         </div>
         <div class="panel"><h2>风险分布</h2><div id="chart-risk" class="chart"></div></div>
       </section>
 
       <!-- Scan detail -->
-      <section x-show="view==='scans'" class="view">
+      <section class="view hidden" id="view-scans">
         <div class="panel">
           <h2>会话列表</h2>
-          <div class="empty" x-show="recent.length===0">暂无会话 —— 先运行一次扫描</div>
-          <table class="table" x-show="recent.length>0">
+          <div class="empty hidden" id="scanListEmpty">暂无会话 —— 先运行一次扫描</div>
+          <table class="table hidden" id="scanListTable">
             <thead><tr><th>会话</th><th>风险</th><th>裁决</th><th></th></tr></thead>
-            <tbody>
-              <template x-for="r in recent" :key="r.session_id">
-                <tr>
-                  <td class="mono" x-text="r.session_id"></td>
-                  <td><span class="pill" :class="riskCls(r.risk_level)" x-text="r.risk_level"></span></td>
-                  <td><span class="pill" :class="verdictCls(r.verdict)" x-text="r.verdict"></span></td>
-                  <td><button class="btn small" @click="loadDetail(r.session_id)">查看</button></td>
-                </tr>
-              </template>
-            </tbody>
+            <tbody id="scanListBody"></tbody>
           </table>
         </div>
-        <div class="panel" x-show="detail">
-          <h2>依赖与信号 <span class="mono dim" x-text="detail?.session_id"></span></h2>
-          <div class="reasons" x-show="detail?.risk_profile?.human_review_reasons?.length">
-            <template x-for="reason in detail?.risk_profile?.human_review_reasons || []">
-              <div class="reason" x-text="reason"></div>
-            </template>
-          </div>
-          <table class="table" x-show="detail?.snapshot?.packages?.length">
+        <div class="panel hidden" id="detailPanel">
+          <h2>依赖与信号 <span class="mono dim" id="detailSession"></span></h2>
+          <div id="detailReasons"></div>
+          <h3>依赖清单</h3>
+          <table class="table hidden" id="pkgTable">
             <thead><tr><th>包</th><th>版本</th><th>License</th><th>直接依赖</th></tr></thead>
-            <tbody>
-              <template x-for="p in detail?.snapshot?.packages || []" :key="p.name">
-                <tr>
-                  <td class="mono" x-text="p.name"></td>
-                  <td class="mono" x-text="p.version"></td>
-                  <td x-text="p.license || 'unknown'"></td>
-                  <td x-text="p.direct ? '是' : '否'"></td>
-                </tr>
-              </template>
-            </tbody>
+            <tbody id="pkgBody"></tbody>
           </table>
           <h3>证据链</h3>
-          <table class="table" x-show="detail?.risk_profile?.evidence_chain?.length">
+          <table class="table hidden" id="evidenceTable">
             <thead><tr><th>Skill</th><th>来源</th><th>置信度</th><th>摘要</th></tr></thead>
-            <tbody>
-              <template x-for="(e, i) in detail?.risk_profile?.evidence_chain || []" :key="i">
-                <tr>
-                  <td class="mono" x-text="e.skill"></td>
-                  <td x-text="e.source"></td>
-                  <td x-text="e.confidence"></td>
-                  <td class="wrap" x-text="e.summary"></td>
-                </tr>
-              </template>
-            </tbody>
+            <tbody id="evidenceBody"></tbody>
           </table>
         </div>
       </section>
 
       <!-- Timeline -->
-      <section x-show="view==='timeline'" class="view">
+      <section class="view hidden" id="view-timeline">
         <div class="panel">
           <h2>状态机时间线</h2>
-          <div class="empty" x-show="recent.length===0">暂无会话</div>
-          <div class="timeline-picker" x-show="recent.length>0">
-            <select class="input" x-model="timelineSession" @change="loadTimeline()">
-              <template x-for="r in recent" :key="r.session_id">
-                <option :value="r.session_id" x-text="r.session_id"></option>
-              </template>
-            </select>
+          <div class="empty hidden" id="timelineEmpty">暂无会话</div>
+          <div class="timeline-picker hidden" id="timelinePicker">
+            <select class="input" id="timelineSession"></select>
           </div>
-          <div class="timeline" x-show="timelineSteps.length">
-            <template x-for="(s, i) in timelineSteps" :key="i">
-              <div class="tl-node">
-                <div class="tl-dot" :class="{done: i < timelineSteps.length - 1}"></div>
-                <div class="tl-state" x-text="s.state"></div>
-                <div class="tl-time dim mono" x-text="s.time"></div>
-              </div>
-            </template>
-          </div>
+          <div class="timeline hidden" id="timelineSteps"></div>
         </div>
       </section>
 
       <!-- Audit chain -->
-      <section x-show="view==='audit'" class="view">
+      <section class="view hidden" id="view-audit">
         <div class="panel">
-          <h2>审计链
-            <span class="pill" :class="auditVerification?.intact ? 'ok' : 'danger'"
-                  x-text="auditVerification?.intact ? '✓ 链完整' : '✗ 自 ' + (auditVerification?.broken_at ?? '?') + ' 号起断裂'"></span>
-          </h2>
-          <div class="empty" x-show="auditEntries.length===0">审计链为空 —— 运行一次扫描或守门</div>
-          <table class="table" x-show="auditEntries.length>0">
+          <h2>审计链 <span class="pill hidden" id="auditPill"></span></h2>
+          <div class="empty hidden" id="auditEmpty">审计链为空 —— 运行一次扫描或守门</div>
+          <table class="table hidden" id="auditTable">
             <thead><tr><th>#</th><th>会话</th><th>事件</th><th>裁决</th><th>证据哈希</th><th>entry_hash</th></tr></thead>
-            <tbody>
-              <template x-for="e in auditEntries" :key="e.id">
-                <tr>
-                  <td x-text="e.id"></td>
-                  <td class="mono" x-text="e.session_id"></td>
-                  <td x-text="e.event"></td>
-                  <td x-text="e.verdict || '—'"></td>
-                  <td class="mono wrap" x-text="e.evidence_hash || '—'"></td>
-                  <td class="mono wrap" x-text="[...e.entry_hash].slice(0,16).join('') + '…'"></td>
-                </tr>
-              </template>
-            </tbody>
+            <tbody id="auditBody"></tbody>
           </table>
         </div>
       </section>

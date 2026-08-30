@@ -144,3 +144,29 @@ body {
 
 .chart { height: 260px; }
 .timeline-picker { margin-bottom: var(--space-4); }
+
+/* Loading skeleton + error states (PROMPT 6.1.5 三态) */
+.skel {
+  background: linear-gradient(90deg, var(--bg-2) 25%, color-mix(in srgb, var(--stroke) 70%, transparent) 50%, var(--bg-2) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-s);
+  animation: shimmer 1.2s infinite var(--ease);
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.skel-num { height: 26px; width: 60px; }
+.skel-label { height: 12px; width: 90px; margin-top: var(--space-2); }
+.skel-line { height: 14px; margin-bottom: var(--space-2); }
+.skeleton-lines { padding: var(--space-2) 0; }
+.statusbar.error { border-color: var(--warn); color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.stat-num.bump { animation: bump var(--dur-slow) var(--ease); }
+@keyframes bump { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* View/util toggles (vanilla JS path) */
+.hidden { display: none !important; }
+.skeleton-hidden { display: block; }
