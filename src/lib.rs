@@ -10,5 +10,6 @@ pub mod agents;
 pub mod audit;
 pub mod mcp;
 pub mod models;
+pub mod runtime;
 pub mod security;
 pub mod skills;
