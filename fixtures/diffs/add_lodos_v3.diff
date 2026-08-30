@@ -1,0 +1,15 @@
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -14,6 +14,11 @@
+     "node_modules/express": {
+       "version": "4.17.3",
+       "license": "MIT"
+     },
++    "node_modules/lodos": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/lodos/-/lodos-1.0.0.tgz",
++      "integrity": "sha512- DEMO"
++    },
+     "node_modules/left-pad": {
+       "version": "1.3.0",
+       "license": "MIT"

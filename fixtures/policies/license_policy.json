@@ -1,0 +1,5 @@
+{
+  "version": "1.0",
+  "allowed": ["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "Unlicense", "CC0-1.0"],
+  "forbidden": ["GPL-2.0", "GPL-3.0", "AGPL-3.0", "LGPL-3.0"]
+}
