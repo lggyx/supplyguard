@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod agents;
 pub mod audit;
 pub mod mcp;
 pub mod models;
