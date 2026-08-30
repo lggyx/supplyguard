@@ -8,6 +8,7 @@
 
 pub mod cve_match;
 pub mod hallucination_check;
+pub mod license_check;
 pub mod sbom_build;
 
 use thiserror::Error;
