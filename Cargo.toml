@@ -1,0 +1,25 @@
+[package]
+name = "supplyguard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Multi-Agent supply chain security defense system for the AI coding era"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
