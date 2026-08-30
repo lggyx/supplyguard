@@ -5,3 +5,5 @@
 //! tamper-evident audit chain.
 
 #![forbid(unsafe_code)]
+
+pub mod models;
