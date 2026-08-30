@@ -10,3 +10,4 @@ pub mod audit;
 pub mod mcp;
 pub mod models;
 pub mod security;
+pub mod skills;
