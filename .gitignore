@@ -1,14 +1,6 @@
 # Rust
 target/
 
-# Python (legacy tree, removed at S1.4)
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
 # Environment & local config
 .env
 *.log
