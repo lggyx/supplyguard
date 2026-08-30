@@ -1,262 +1,86 @@
 # SupplyGuard
 
-> 面向 AI 编程时代的多 Agent 供应链安全防御系统。既在 PR 时刻拦下危险依赖（含 AI 幻觉包），也在零日事件披露时刻自动完成全库影响面评估与缓解修复。
+> 面向 AI 编程时代的多 Agent 供应链安全防御系统——在依赖进入代码库之前，拦下 AI 幻觉包（slopsquatting）、已知 CVE 与 license 冲突，并把每一次裁决封进不可篡改的审计链。
 
-## 项目定位
+## 一句话定位
 
-供应链攻击是当下企业软件最真实、最贵、也最被忽视的风险源。而 AI 编程工具的普及带来了一类全新的攻击面：**LLM 会"幻觉"出并不存在的包名，攻击者会抢注这些名字**（slopsquatting）。传统 SCA/DevSecOps 工具是围绕人写的代码设计的，在 AI 生成代码的时代节奏跟不上、决策不够智能。
+LLM 会"幻觉"出并不存在的包名，攻击者批量抢注这些名字（slopsquatting）；传统 SCA 工具只做 CVE 匹配、不参与决策。SupplyGuard 用一条本地守门闭环（扫描 → 多信号融合 → 裁决 → 审计留痕）守住依赖引入时刻，v1 完整覆盖 npm 生态。
 
-SupplyGuard 试图用多 Agent 系统解决这道题：把守门（proactive）与响应（reactive）两个不同触发时刻合并到一套共享引擎里，让 Agent 承担分析、决策、修复与审计的全闭环。
+## 功能列表（v1 范围）
 
-```mermaid
-flowchart TB
-    subgraph Engine["🔧 SupplyGuard 共享引擎"]
-        E1["依赖图 / SBOM"]
-        E2["包风险评估"]
-        E3["修复策略生成"]
-        E4["审计与知识沉淀"]
-    end
-
-    subgraph Guard["🛡️ 守门模式 Proactive"]
-        G1["PR / 依赖变更"]
-        G2["拦截危险引入"]
-    end
-
-    subgraph Response["🚨 响应模式 Reactive"]
-        R1["CVE / 恶意包披露"]
-        R2["全库影响面评估"]
-    end
-
-    G1 --> G2 --> Engine
-    R1 --> R2 --> Engine
-    Engine --> G2
-    Engine --> R2
-```
-
-## 双入口一引擎
-
-| 入口 | 触发时刻 | 目标 |
-| --- | --- | --- |
-| **守门模式** | PR / 依赖变更 | 拦下危险引入、AI 幻觉包、恶意脚本、license 冲突 |
-| **响应模式** | 上游 CVE / 恶意包披露 | 全库扫描、影响面评估、生成缓解 PR、自动降级/替换 |
-
-两条链路共享同一套底层能力：依赖图与 SBOM 建模、包风险评估、修复策略生成、审计与知识沉淀。
-
-## 多 Agent 架构
-
-```mermaid
-flowchart LR
-    External["外部事件"] -->|PR / CVE Feed| Sentinel
-    Sentinel -->|AnalysisRequest| Analyst
-    Analyst -->|RiskProfile| Auditor
-    Auditor -->|RemediationOrder| Remediator
-    Remediator -->|RemediationResult| Auditor
-    Auditor -->|Verdict| Sentinel
-    Human["安全负责人"] -.->|高风险审批| Auditor
-
-    style Sentinel fill:#00d4ff20,stroke:#00d4ff
-    style Analyst fill:#a855f720,stroke:#a855f7
-    style Auditor fill:#f9731620,stroke:#f97316
-    style Remediator fill:#22c55e20,stroke:#22c55e
-```
-
-| Agent | 编排角色 | 核心职责 | 关键 Skill | 安全边界 |
-| --- | --- | --- | --- | --- |
-| **Sentinel** | Manager | 事件路由、任务拆分、状态机推进、打 UNTRUSTED 标签 | `policy-check` | 不做安全判断、不写代码 |
-| **Analyst** | Worker | 只读分析、多信号融合、输出 RiskProfile | `sbom-build`、`cve-match`、`hallucination-check`、`maintainer-profile`、`license-check`、`risk-profile`、`reachability-scan` | 只读、不能开 PR |
-| **Auditor** | Worker（仲裁特权） | 终局裁决、审计留痕、人工审批 | `policy-check`、`evidence-verify`、`human-approval-request`、`audit-log-write` | 不看 untrusted 原文 |
-| **Remediator** | Worker | 修复策略落地、开 PR、沙箱验证 | `bump-version`、`swap-dependency`、`quarantine-package`、`sandbox-test-run` | 不能 merge、只沙箱运行 |
-
-上下文传递协议：`AnalysisRequest` → `RiskProfile` → `RemediationOrder` → `RemediationResult` → `Verdict`
-
-任务状态机：`received → analyzing → arbitrating → remediating → verifying → sealed`
-
-## 洋葱式安全架构
-
-SupplyGuard 的工作对象本身可能是恶意的。Agent 读取包 README、CVE 描述、commit message 来做决策，恶意包可以嵌入 prompt injection 操纵 Agent。
-
-```mermaid
-flowchart TB
-    L1["🧅 L1 感知层：统一标记 UNTRUSTED"] --> L2
-    L2["🧅 L2 净化层：沙箱解析 + 注入检测"] --> L3
-    L3["🧅 L3 上下文隔离：&lt;untrusted_source&gt; 边界"] --> L4
-    L4["🧅 L4 能力最小化：Agent 最小工具集"] --> L5
-    L5["🧅 L5 决策仲裁：Auditor 只看结构化证据"] --> L6
-    L6["🧅 L6 执行沙箱：--ignore-scripts + 临时容器"] --> L7
-    L7["🧅 L7 审计不可否认：append-only log + 签名"]
-
-    style L1 fill:#00d4ff15,stroke:#00d4ff
-    style L2 fill:#00d4ff15,stroke:#00d4ff
-    style L3 fill:#00d4ff15,stroke:#00d4ff
-    style L4 fill:#00d4ff15,stroke:#00d4ff
-    style L5 fill:#a855f715,stroke:#a855f7
-    style L6 fill:#a855f715,stroke:#a855f7
-    style L7 fill:#a855f715,stroke:#a855f7
-```
-
-这是 Agent 化供应链安全产品相对传统 SCA 工具的结构性差异。
-
-## Skill 工程体系
-
-13 个 Skill 按数据层 → 信号层 → 融合层 → 修复层 → 验证层 → 治理层分层解耦。
-
-| 层级 | Skill | 用途 | 状态 |
-| --- | --- | --- | --- |
-| **数据层** | `sbom-build` | 解析 lockfile，构建依赖图与 SBOM 快照 | ✅ 已实现 |
-| **信号层** | `cve-match` | CVE / 漏洞 / 恶意包匹配 | ✅ 已实现 |
-| | `hallucination-check` | AI 幻觉包 / slopsquatting 检测 | ✅ 已实现 |
-| | `maintainer-profile` | 维护者与发布行为画像 | ⏳ 设计中 |
-| | `license-check` | 许可证冲突检测 | ✅ 已实现 |
-| **融合层** | `risk-profile` | 多信号融合，输出 RiskProfile | ✅ 已实现 |
-| **修复层** | `bump-version` | 版本升级修复 | ⏳ 设计中 |
-| | `swap-dependency` | 依赖替换 | ⏳ 设计中 |
-| | `quarantine-package` | 恶意包隔离 | ⏳ 设计中 |
-| | `patch-gen` | 补丁生成 | ⏳ 设计中 |
-| **验证层** | `sandbox-test-run` | 沙箱测试验证 | ⏳ 设计中 |
-| | `reachability-scan` | 漏洞可达性分析 | ⏳ 设计中 |
-| **治理层** | `policy-check` | 组织策略检查 | ⏳ 设计中 |
-| | `evidence-verify` | 证据校验 | ⏳ 设计中 |
-| | `audit-log-write` | 审计日志写入 | ✅ 已实现（审计模块） |
-| | `human-approval-request` | 人工审批触发 | ⏳ 设计中 |
-
-### Skill 与 Agent 关系矩阵
-
-| Agent | 直接调用 Skill |
+| 功能 | 说明 |
 | --- | --- |
-| Sentinel | `policy-check`（轻量路由策略） |
-| Analyst | `sbom-build`、`cve-match`、`hallucination-check`、`maintainer-profile`、`license-check`、`risk-profile`、`reachability-scan` |
-| Remediator | `bump-version`、`swap-dependency`、`quarantine-package`、`sandbox-test-run` |
-| Auditor | `policy-check`、`evidence-verify`、`human-approval-request`、`audit-log-write` |
+| `supplyguard scan <dir>` | 解析 npm `package-lock.json`（v1/v2/v3），输出依赖清单 + 每包风险信号 + JSON/Markdown 报告 |
+| `supplyguard guard --diff <file>` | 对依赖变更 diff 做守门裁决：Allow / Block / RequireReview + 证据链 + 审计落盘 |
+| Skill ×6 | `sbom-build`、`hallucination-check`、`cve-match`、`license-check`、`risk-profile`、`audit-log-write` |
+| Agent ×4 | Sentinel（入口与 UNTRUSTED 标记）/ Analyst（只读分析）/ Auditor（仲裁与审计）/ Remediator（建议产出，不开真实 PR） |
+| 洋葱安全 L1–L3 | UNTRUSTED 标记、零宽字符净化、prompt 注入检测 |
+| 审计链 | SQLite 追加表 + HMAC-SHA256 哈希链，`verify` 可检测任意字节篡改 |
+| Web 控制台 | `supplyguard serve` 内置四视图仪表盘（总览 / 扫描详情 / 裁决时间线 / 审计链），深色主题 + SSE 实时事件 |
 
-## 技术栈
+非目标（backlog）：响应模式（CVE feed 订阅与批量处置）、真实 GitHub PR 集成、PyPI/Maven 生态、执行沙箱、Web 鉴权与远程访问。
 
-| 层级 | 当前 | 规划中 |
-| --- | --- | --- |
-| **多 Agent 框架** | 本地 `LocalOrchestrator`（进程内编排） | 可插拔分布式运行时（待选型） |
-| **数据层** | SQLite + JSONB | PostgreSQL（+ pgvector） |
-| **审计日志** | SQLite append-only + HMAC 哈希链 | PostgreSQL append-only |
-| **消息队列** | 内存队列 | Redis / MQ（待选型） |
-| **AI 网关** | 直接调用 | 统一网关（限流、观测、路由） |
-| **可观测** | 结构化 JSON 日志 + span trace | OpenTelemetry 后端接入 |
-| **MCP 工具** | GitHub、npm registry、OSV（本地等价实现） | 逐步替换为标准 MCP Server |
+## 快速开始
+
+需要 Rust stable ≥ 1.85（[rustup](https://rustup.rs) 安装，Windows 需 MSVC Build Tools）。无需其他系统依赖（SQLite 已 bundled 进构建）。
+
+```bash
+# 1. 克隆并构建
+git clone https://github.com/lggyx/supplyguard && cd supplyguard
+cargo build
+
+# 2. 三条命令
+cargo run -- scan <项目目录>        # 扫描一个 npm 项目的依赖
+cargo run -- guard --diff <diff文件> # 对一次依赖变更出守门裁决
+cargo run -- serve                  # 启动本地 Web 控制台（默认 http://127.0.0.1:7878）
+```
+
+> **当前状态（Rust 重写冲刺进行中）**：CLI 三个子命令已可运行（打印解析后的参数）；`scan` / `guard` / `serve` 的完整实现分别于 S3 / S3 / S4 阶段落地，本节随代码事实同步更新。
+
+## 架构简图
+
+```
+main (CLI: scan / guard / serve)
+  └─> web (axum + 内嵌 ui/, 只读 API + SSE)      [S4]
+        └─> runtime (LocalOrchestrator: run_scan / run_guard, 事件发布)
+              └─> agents (Sentinel → Analyst → Auditor → Remediator)
+                    └─> skills (sbom-build / hallucination-check / cve-match /
+                                license-check / risk-profile)
+                          └─> models (消息五类型 + 状态机 + newtype ID)
+              skills ──trait──> mcp (npm_local / osv_local / license_spdx)
+  security (净化 + 注入检测)、audit (SQLite + HMAC 哈希链)：被任意层依赖
+```
+
+依赖方向单向：`main → web → runtime → agents → skills → models`；`skills` 通过 trait 消费 `mcp` 能力，不依赖 `agents` / `runtime` / `web`。
 
 ## 项目状态
 
-**v0.3：能力补齐阶段**。骨架可运行，正在向真实可用的工具演进。
+| 模块 | 状态 |
+| --- | --- |
+| 工作区（cargo + edition 2024 + lint 门禁） | ✅ 已实现 |
+| models：消息协议 + 状态机 + newtype ID | ✅ 已实现 |
+| CLI 骨架（scan / guard / serve） | ✅ 已实现（占位输出） |
+| security：净化 + 注入检测 | 🚧 S2 落地 |
+| audit：SQLite 追加表 + HMAC 链 | 🚧 S2 落地 |
+| mcp：trait + npm/OSV/SPDX 本地实现 | 🚧 S3 落地 |
+| skills ×6 / agents ×4 / runtime 编排 | 🚧 S3 落地 |
+| CLI scan / guard 真实现 + 双格式报告 | 🚧 S3 落地 |
+| Web 控制台（四视图 + SSE） | 🚧 S4 落地 |
+| 响应模式 / GitHub 集成 / 真网 registry 查询 | 📋 backlog（冲刺后 M4+） |
 
-| 模块 | 状态 | 说明 |
-| --- | --- | --- |
-| 产品方向与场景定义 | ✅ | 供应链安全 + AI slopsquatting |
-| 解决方案架构 | ✅ | 双入口一引擎 + 洋葱式安全防御 |
-| 多 Agent 角色分工 | ✅ | Sentinel / Analyst / Remediator / Auditor |
-| 核心 Skill 清单 | ✅ | 13 个 Skill，含输入输出与失败降级 |
-| 可运行骨架代码 | ✅ | Python 3.10+，测试覆盖核心链路 |
-| 已落地 Skill | ✅ | `hallucination-check`、`cve-match`、`risk-profile`、`sbom-build`、`license-check` |
-| 审计日志 | ✅ | append-only + HMAC 签名哈希链 |
-| 可观测 | ✅ | 结构化 JSON 日志 + span trace |
-| 洋葱 L2/L3 | ✅ | prompt-injection 检测 + 零宽字符剥离 |
-| 剩余 Skill 实现 | ⏳ | `maintainer-profile`、`reachability-scan`、修复层与治理层 |
-| 真实外部集成 | ⏳ | GitHub PR webhook、OSV feed 增量订阅、PR 创建 |
-| 响应模式端到端 | ⏳ | 零日 CVE 全库影响面评估与批量修复 |
+设计文档见 `docs/specs/`；开发约束见 `docs/PROMPT.md`；行为参考样例见 `docs/demo/`（为 Python 版输出，Rust 版落地后更新）。
 
-## 目录结构
+## 配置说明
 
-```
-SupplyGuard/
-├── README.md                              # 本文件
-├── pyproject.toml                         # Python 项目配置
-├── requirements.txt                       # 依赖
-├── docs/
-│   ├── specs/
-│   │   └── 2026-08-10-supplyguard-design.md   # 设计文档
-│   ├── demo/                              # Demo 输出样例
-│   ├── local-npm-scan.md                  # 本地 npm 扫描说明
-│   └── PROMPT.md                          # 项目开发 prompt（AI 协作约定）
-├── agents/                                # Agent Identity 与 K8s pod 模板
-│   ├── sentinel/
-│   ├── analyst/
-│   ├── remediator/
-│   └── auditor/
-├── src/supplyguard/                       # 核心实现
-│   ├── agents/                            # 4 个 Agent
-│   ├── skills/                            # Skill 实现
-│   ├── mcp/                               # MCP 等效工具层 + 工具契约
-│   ├── models/                            # 消息与状态 Schema
-│   ├── runtime/                           # 本地编排器（进程内多 Agent 编排）
-│   ├── audit/                             # append-only 签名审计日志
-│   ├── security/                          # 洋葱 L2/L3（injection detector）
-│   ├── observability.py                   # 结构化日志 + span trace
-│   └── demo/                              # Demo 场景
-└── tests/                                 # 单元测试
-```
+v1 当前不引入配置文件：监听地址经 `serve --bind <addr>` 覆盖，扫描范围经 CLI 标志控制。`supplyguard.toml`（license 策略、审计密钥来源、监听地址等）计划随 S3 阶段引入并在本节补充字段说明。
 
-## 本地运行
+## 安全说明
 
-### 环境要求
-
-- Python 3.10+
-- （可选）npm registry 网络访问；Demo 在离线时会回退到本地相似度匹配
-
-### 安装
-
-```bash
-uv venv
-uv pip install -r requirements.txt
-uv pip install -e .
-```
-
-### 运行 Demo：Slopsquatting / 幻觉包拦截
-
-```bash
-python src/supplyguard/demo/slopsquatting_guard.py
-```
-
-或直接使用 uv run：
-
-```bash
-uv run python src/supplyguard/demo/slopsquatting_guard.py
-```
-
-该 Demo 模拟一次 PR 事件：AI 生成的代码引入了名为 `lodos` 的包（`lodash` 的 typosquat / 幻觉）。
-SupplyGuard 会按以下链路执行：
-
-| 步骤 | Agent | 动作 |
-| --- | --- | --- |
-| 1 | **Sentinel** | 接收 PR 事件，给外部内容打 `UNTRUSTED` 标签 |
-| 2 | **Analyst** | 调用 `hallucination-check` Skill 查询 npm registry 并做相似度匹配 |
-| 3 | **Analyst** | 调用 `risk-profile` Skill 融合信号 |
-| 4 | **Auditor** | 根据 RiskProfile 裁决 `block` |
-| 5 | **Remediator** | 生成阻止性 comment |
-| 6 | **Auditor** | 写入审计摘要 |
-
-预期输出见 [docs/demo/slopsquatting_guard_output.md](docs/demo/slopsquatting_guard_output.md)。
-
-### 扫描本地 npm 项目
-
-```bash
-uv run python src/supplyguard/demo/scan_repository.py <目标项目目录>
-```
-
-详见 [docs/local-npm-scan.md](docs/local-npm-scan.md)。
-
-### 运行测试
-
-```bash
-uv run pytest tests/
-```
-
-## 编排层说明
-
-- 业务层（Agent 逻辑、Skill、MCP 适配）与编排层解耦
-- 当前使用 `LocalOrchestrator` 在进程内模拟多 Agent 编排
-- `runtime` 层保留可插拔运行时的适配边界，分布式框架选型见设计文档
-
-## 快速链接
-
-- 设计文档：[docs/specs/2026-08-10-supplyguard-design.md](docs/specs/2026-08-10-supplyguard-design.md)
-- 开发约定（prompt）：[docs/PROMPT.md](docs/PROMPT.md)
-- Demo 预期输出：[docs/demo/slopsquatting_guard_output.md](docs/demo/slopsquatting_guard_output.md)
+- **本地优先**：Web 控制台默认只监听 `127.0.0.1:7878`；如需远程访问，请自行套反向代理并加鉴权，本项目不内置鉴权。
+- **审计链**：裁决写入 SQLite 追加表，逐条 HMAC-SHA256 签名链接；只提供 append / verify，不存在改写历史的代码路径；篡改任一字节 `verify` 即失败。
+- **untrusted 边界**：外部内容（README、CVE 描述、diff、registry 响应）进入系统即打 UNTRUSTED 标记、剥离零宽字符、过注入检测；审计与日志只存哈希与系统生成摘要，不落原文。
+- **签名密钥**：经环境变量注入（不写入仓库与配置文件）。
 
 ## License
 
-待定（倾向 Apache-2.0）。
+待定（未定案前不附协议文件）。
