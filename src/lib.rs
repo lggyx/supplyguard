@@ -14,3 +14,4 @@ pub mod models;
 pub mod runtime;
 pub mod security;
 pub mod skills;
+pub mod web;

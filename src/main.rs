@@ -123,12 +123,117 @@ fn run() -> i32 {
                 EXIT_ERROR
             }
         },
-        Command::Serve { bind } => {
-            // Web console lands in S4; the bind contract is fixed already.
-            println!("serve (placeholder): bind={bind}");
-            EXIT_ALLOW
-        }
+        Command::Serve { bind } => run_serve(bind),
     }
+}
+
+/// Boots the web console: sync runtime + broadcast bridge + axum server.
+fn run_serve(bind: String) -> i32 {
+    let config = match Config::load() {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("supplyguard: error: configuration invalid: {err}");
+            return EXIT_ERROR;
+        }
+    };
+    let chain = match AuditChain::open(&config.audit_db, &config.signing_key) {
+        Ok(chain) => chain,
+        Err(err) => {
+            eprintln!("supplyguard: error: cannot open audit chain: {err}");
+            return EXIT_ERROR;
+        }
+    };
+    let injection = match InjectionDetector::with_builtin_rules() {
+        Ok(detector) => detector,
+        Err(err) => {
+            eprintln!("supplyguard: error: injection corpus invalid: {err}");
+            return EXIT_ERROR;
+        }
+    };
+    let registry = NpmLocal::new();
+    let vuln = OsvLocal::new();
+    let spdx = SpdxLocal::new();
+    let (registry, vuln, spdx) = match (registry, vuln, spdx) {
+        (Ok(r), Ok(v), Ok(s)) => (r, v, s),
+        (Err(err), ..) => {
+            eprintln!("supplyguard: error: {err}");
+            return EXIT_ERROR;
+        }
+        (_, Err(err), _) => {
+            eprintln!("supplyguard: error: {err}");
+            return EXIT_ERROR;
+        }
+        (_, _, Err(err)) => {
+            eprintln!("supplyguard: error: {err}");
+            return EXIT_ERROR;
+        }
+    };
+
+    let (event_tx, _) = tokio::sync::broadcast::channel(256);
+    let sink_tx = event_tx.clone();
+    let orchestrator = LocalOrchestrator::with_sink(
+        RuntimeTools {
+            registry: Arc::new(registry),
+            vuln_source: Arc::new(vuln),
+            license_db: Arc::new(spdx),
+            audit_chain: Arc::new(chain),
+            injection,
+            license_policy: config.license_policy.clone(),
+        },
+        Arc::new(move |event| {
+            let _ = sink_tx.send(event.clone());
+        }),
+    );
+
+    let bind = if bind.is_empty() {
+        config.bind.clone()
+    } else {
+        bind
+    };
+    if bind.starts_with("0.0.0.0") {
+        eprintln!("supplyguard: error: 0.0.0.0 bind is not allowed");
+        return EXIT_ERROR;
+    }
+
+    let state = supplyguard::web::AppState {
+        orchestrator: Arc::new(orchestrator),
+        events: event_tx,
+    };
+    let router = supplyguard::web::router(state);
+
+    println!("SupplyGuard console listening on http://{bind}");
+    println!("Press Ctrl+C to exit.");
+
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            eprintln!("supplyguard: error: async runtime: {err}");
+            return EXIT_ERROR;
+        }
+    };
+    runtime.block_on(async move {
+        let listener = match tokio::net::TcpListener::bind(&bind).await {
+            Ok(listener) => listener,
+            Err(err) => {
+                eprintln!("supplyguard: error: cannot bind {bind}: {err}");
+                std::process::exit(EXIT_ERROR);
+            }
+        };
+        let shutdown = async {
+            let _ = tokio::signal::ctrl_c().await;
+            println!("\nShutting down gracefully…");
+        };
+        if let Err(err) = axum::serve(listener, router)
+            .with_graceful_shutdown(shutdown)
+            .await
+        {
+            eprintln!("supplyguard: error: server: {err}");
+        }
+    });
+    EXIT_ALLOW
 }
 
 fn load_config(audit_db: Option<PathBuf>) -> Result<Config, String> {

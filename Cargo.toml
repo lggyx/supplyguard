@@ -25,8 +25,14 @@ hmac = "0.13.0"
 sha2 = "0.11.0"
 hex = "0.4.3"
 toml = "1.1.4"
+axum = "0.8"
+rust-embed = "8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
+futures-core = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

@@ -132,6 +132,43 @@ pub struct GuardOutcome {
     pub snapshot: Option<SbomSnapshot>,
 }
 
+/// How many recent sessions the overview view returns.
+pub const OVERVIEW_RECENT_LIMIT: usize = 10;
+
+/// Aggregated numbers for the web overview view.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct OverviewSummary {
+    /// Total finished sessions in the store.
+    pub total_sessions: usize,
+    /// Sessions whose fused risk is critical.
+    pub critical: usize,
+    /// Sessions whose fused risk is high.
+    pub high: usize,
+    /// Sessions whose fused risk is medium.
+    pub medium: usize,
+    /// Sessions whose fused risk is low.
+    pub low: usize,
+    /// Sessions whose fused risk is safe.
+    pub safe: usize,
+    /// Most recent sessions (newest first, bounded).
+    pub recent_sessions: Vec<RecentSession>,
+}
+
+/// One row of the overview's recent-session list.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RecentSession {
+    /// Session id.
+    pub session_id: String,
+    /// Entry source label (snake_case).
+    pub source: String,
+    /// Verdict label (snake_case).
+    pub verdict: String,
+    /// Risk level label (snake_case).
+    pub risk_level: String,
+    /// Completion time (ms since epoch).
+    pub timestamp: u64,
+}
+
 /// Event sink: receives every [`OrchestratorEvent`] as it happens.
 pub type EventSink = Arc<dyn Fn(&OrchestratorEvent) + Send + Sync>;
 
@@ -142,6 +179,7 @@ pub struct LocalOrchestrator {
     auditor: Auditor,
     remediator: Remediator,
     license_policy: LicensePolicy,
+    audit_chain: Arc<AuditChain>,
     store: Arc<crate::runtime::store::SessionStore>,
     event_sink: EventSink,
 }
@@ -163,13 +201,14 @@ impl LocalOrchestrator {
             crate::skills::license_check::LicenseCheckSkill::new(tools.license_db.clone()),
             tools.injection,
         );
-        let auditor = Auditor::new(tools.audit_chain);
+        let auditor = Auditor::new(tools.audit_chain.clone());
         Self {
             sentinel: Sentinel,
             analyst,
             auditor,
             remediator: Remediator,
             license_policy: tools.license_policy,
+            audit_chain: tools.audit_chain,
             store: Arc::new(crate::runtime::store::SessionStore::new()),
             event_sink,
         }
@@ -178,6 +217,71 @@ impl LocalOrchestrator {
     /// Read access to the session store (web console views).
     pub fn store(&self) -> Arc<crate::runtime::store::SessionStore> {
         self.store.clone()
+    }
+
+    /// Audit chain entries (web audit view; runtime wraps audit access).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Audit`] on storage failure.
+    pub fn audit_entries(&self) -> Result<Vec<crate::audit::AuditEntry>, crate::audit::AuditError> {
+        self.audit_chain.entries()
+    }
+
+    /// Audit chain verification report (web audit view).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Audit`] on storage failure.
+    pub fn audit_verification(
+        &self,
+    ) -> Result<crate::audit::ChainVerification, crate::audit::AuditError> {
+        self.audit_chain.verify()
+    }
+
+    /// Aggregated summary for the web overview view.
+    pub fn overview(&self) -> OverviewSummary {
+        let sessions = self.store.list();
+        let mut summary = OverviewSummary {
+            total_sessions: sessions.len(),
+            ..OverviewSummary::default()
+        };
+        for outcome in &sessions {
+            match outcome.risk_level {
+                RiskLevel::Critical => summary.critical += 1,
+                RiskLevel::High => summary.high += 1,
+                RiskLevel::Medium => summary.medium += 1,
+                RiskLevel::Low => summary.low += 1,
+                RiskLevel::Safe => summary.safe += 1,
+            }
+            summary.recent_sessions.push(RecentSession {
+                session_id: outcome.session_id.to_string(),
+                source: serde_json::to_string(&outcome.source)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_string(),
+                verdict: serde_json::to_string(&outcome.verdict)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_string(),
+                risk_level: serde_json::to_string(&outcome.risk_level)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_string(),
+                timestamp: outcome
+                    .timeline
+                    .last()
+                    .map(|(_, at)| *at)
+                    .unwrap_or_default(),
+            });
+        }
+        summary
+            .recent_sessions
+            .sort_by_key(|session| std::cmp::Reverse(session.timestamp));
+        summary
+            .recent_sessions
+            .truncate(crate::runtime::orchestrator::OVERVIEW_RECENT_LIMIT);
+        summary
     }
 
     /// Runs the full guard pipeline over explicit dependency changes.
@@ -213,6 +317,8 @@ impl LocalOrchestrator {
 
     /// Runs the scan pipeline over a project directory (SBOM first).
     ///
+    /// The session id is derived from the SBOM id.
+    ///
     /// # Errors
     ///
     /// Returns [`RuntimeError`] when the lockfile cannot be parsed (fatal)
@@ -228,8 +334,23 @@ impl LocalOrchestrator {
             lockfile_path: lockfile.display().to_string(),
             include_dev,
         })?;
-
         let session_id = SessionId::new(format!("scan-{}", snapshot.sbom_id));
+        self.run_scan_with_session(session_id, project_dir, snapshot)
+    }
+
+    /// Runs the scan pipeline with a caller-supplied session id (web trigger
+    /// flow: the API answers 202 with the id before the pipeline finishes).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError`] when the lockfile cannot be parsed (fatal)
+    /// or the audit chain fails.
+    pub fn run_scan_with_session(
+        &self,
+        session_id: SessionId,
+        project_dir: &Path,
+        snapshot: SbomSnapshot,
+    ) -> Result<GuardOutcome, RuntimeError> {
         self.emit(&OrchestratorEvent::ScanStarted {
             session_id: session_id.to_string(),
             mode: "scan",
