@@ -252,14 +252,16 @@ mod tests {
 
     #[test]
     fn analysis_request_survives_roundtrip() {
-        let back = roundtrip(&sample_request());
-        assert_eq!(back, sample_request());
+        let request = sample_request();
+        let back = roundtrip(&request);
+        assert_eq!(back, request);
     }
 
     #[test]
     fn risk_profile_survives_roundtrip() {
-        let back = roundtrip(&sample_profile());
-        assert_eq!(back, sample_profile());
+        let profile = sample_profile();
+        let back = roundtrip(&profile);
+        assert_eq!(back, profile);
     }
 
     #[test]
