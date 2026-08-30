@@ -11,6 +11,10 @@ pub mod license_spdx;
 pub mod npm_local;
 pub mod osv_local;
 
+pub use license_spdx::SpdxLocal;
+pub use npm_local::NpmLocal;
+pub use osv_local::OsvLocal;
+
 use thiserror::Error;
 
 /// One digested vulnerability advisory record.

@@ -6,6 +6,7 @@
 //! conservatively (never silently allow). Skills never perform network IO —
 //! external data flows in through `mcp` traits.
 
+pub mod cve_match;
 pub mod hallucination_check;
 pub mod sbom_build;
 
