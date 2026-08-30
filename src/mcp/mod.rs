@@ -27,7 +27,7 @@ pub struct VulnRecord {
 }
 
 /// Errors raised by mcp implementations.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum McpError {
     /// A built-in dataset is corrupt (a bug or a broken install).
     #[error("mcp dataset is corrupt: {0}")]
