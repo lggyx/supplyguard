@@ -241,6 +241,68 @@ async fn sse_endpoint_streams_content_type() {
 }
 
 #[tokio::test]
+async fn trigger_response_returns_202_with_session_id() {
+    let (router, _dir) = app();
+    let body = serde_json::json!({
+        "cve": "CVE-2019-10744",
+        "path": fixture("demo-app").display().to_string()
+    });
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/response")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert!(
+        value["session_id"]
+            .as_str()
+            .expect("id")
+            .starts_with("web-response-")
+    );
+}
+
+#[tokio::test]
+async fn trigger_response_with_bad_path_is_400() {
+    let (router, _dir) = app();
+    let body = serde_json::json!({"cve": "CVE-2020-8203", "path": "definitely/not/here"});
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/response")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(value["error"]["code"], "invalid_path");
+}
+
+#[tokio::test]
 async fn unknown_route_is_unified_404() {
     let (router, _dir) = app();
     let (status, body) = get(&router, "/api/unknown").await;

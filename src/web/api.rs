@@ -63,7 +63,7 @@ pub async fn scan_timeline(
     match state.orchestrator.store().get(&id) {
         Some(outcome) => {
             let steps: Vec<serde_json::Value> = outcome
-                .timeline
+                .timeline()
                 .iter()
                 .map(|(state, at)| json!({"state": state, "timestamp": at}))
                 .collect();
@@ -187,6 +187,41 @@ pub async fn trigger_guard(
             "web-diff".to_string(),
             changes,
         );
+    });
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({"session_id": session_id.as_str()})),
+    )
+        .into_response()
+}
+
+/// Request body of POST /api/response.
+#[derive(Debug, Deserialize)]
+pub struct ResponseTrigger {
+    /// CVE identifier to check (e.g. CVE-2020-8203).
+    pub cve: String,
+    /// Project directory containing package.json / package-lock.json.
+    pub path: String,
+}
+
+/// POST /api/response — trigger a reactive response run; answers 202 with the session id.
+pub async fn trigger_response(
+    State(state): State<AppState>,
+    Json(body): Json<ResponseTrigger>,
+) -> Response {
+    let project_dir = std::path::PathBuf::from(&body.path);
+    if !project_dir.is_dir() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "invalid_path",
+            "path is not a directory",
+        );
+    }
+    let session_id = crate::models::ids::SessionId::new(format!("web-response-{}", now_suffix()));
+    let orchestrator = state.orchestrator.clone();
+    let cve = body.cve.clone();
+    std::thread::spawn(move || {
+        let _ = orchestrator.run_response(&cve, &project_dir);
     });
     (
         StatusCode::ACCEPTED,

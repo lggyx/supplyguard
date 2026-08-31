@@ -262,3 +262,111 @@ fn outcome_json_never_carries_untrusted_markers_or_raw_context() {
     assert!(!json.contains("<untrusted_source>"));
     assert!(!json.contains("raw-secret-context-marker"));
 }
+
+#[test]
+fn response_mode_finds_affected_packages_for_known_cve() {
+    let (tools, _keep) = tools();
+    let orchestrator = LocalOrchestrator::new(tools);
+    let outcome = orchestrator
+        .run_response("CVE-2020-8203", &fixture("demo-app"))
+        .expect("response runs");
+
+    assert_eq!(outcome.cve_id, "CVE-2020-8203");
+    assert_eq!(outcome.affected_count, 1);
+    assert_eq!(outcome.affected_packages[0].package_name, "lodash");
+    assert_eq!(outcome.affected_packages[0].installed_version, "4.17.4");
+    assert!(
+        outcome.affected_packages[0]
+            .cves
+            .contains(&"CVE-2020-8203".to_string())
+    );
+    // Severity is the max across ALL advisories matching the package, not
+    // just the queried CVE — lodash 4.17.4 also matches CVE-2019-10744 (critical).
+    assert_eq!(outcome.affected_packages[0].severity, "critical");
+    assert_eq!(outcome.verdict, Verdict::Block);
+    assert_eq!(outcome.risk_level, RiskLevel::Critical);
+    assert!(outcome.seal.verified, "audit chain verifies after seal");
+    assert!(outcome.snapshot.is_some());
+}
+
+#[test]
+fn response_mode_blocks_when_critical_cve_found() {
+    let (tools, _keep) = tools();
+    let orchestrator = LocalOrchestrator::new(tools);
+    let outcome = orchestrator
+        .run_response("CVE-2019-10744", &fixture("demo-app"))
+        .expect("response runs");
+
+    assert_eq!(outcome.affected_count, 1);
+    assert_eq!(outcome.affected_packages[0].package_name, "lodash");
+    assert_eq!(outcome.affected_packages[0].severity, "critical");
+    assert_eq!(outcome.verdict, Verdict::Block);
+    assert_eq!(outcome.risk_level, RiskLevel::Critical);
+}
+
+#[test]
+fn response_mode_allows_when_no_packages_affected() {
+    let (tools, _keep) = tools();
+    let orchestrator = LocalOrchestrator::new(tools);
+    let outcome = orchestrator
+        .run_response("CVE-9999-9999", &fixture("demo-app"))
+        .expect("response runs");
+
+    assert_eq!(outcome.affected_count, 0);
+    assert_eq!(outcome.affected_packages.len(), 0);
+    assert_eq!(outcome.verdict, Verdict::Allow);
+    assert_eq!(outcome.risk_level, RiskLevel::Safe);
+    assert_eq!(outcome.total_scanned, 6);
+}
+
+#[test]
+fn response_mode_events_follow_expected_order() {
+    let (tools, _keep) = tools();
+    let events: Arc<Mutex<Vec<OrchestratorEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink_events = events.clone();
+    let orchestrator = LocalOrchestrator::with_sink(
+        tools,
+        Arc::new(move |event: &OrchestratorEvent| {
+            sink_events.lock().expect("sink lock").push(event.clone());
+        }),
+    );
+
+    let outcome = orchestrator
+        .run_response("CVE-2020-8203", &fixture("demo-app"))
+        .expect("response runs");
+
+    let collected = events.lock().expect("lock");
+    let names: Vec<String> = collected
+        .iter()
+        .map(|event| match event {
+            OrchestratorEvent::ScanStarted { .. } => "started",
+            OrchestratorEvent::ScanProgress { .. } => "progress",
+            OrchestratorEvent::GuardVerdict { .. } => "verdict",
+            OrchestratorEvent::AuditAppended { .. } => "audit",
+            OrchestratorEvent::ScanCompleted { .. } => "completed",
+        })
+        .map(str::to_string)
+        .collect();
+    assert_eq!(names.first().map(String::as_str), Some("started"));
+    assert_eq!(names.last().map(String::as_str), Some("completed"));
+    assert!(names.iter().any(|name| name == "verdict"));
+    assert_eq!(
+        names.iter().filter(|name| *name == "audit").count(),
+        2,
+        "verdict + sealed audit events"
+    );
+
+    // Timeline: full linear lifecycle.
+    let states: Vec<SessionState> = outcome.timeline.iter().map(|(state, _)| *state).collect();
+    assert_eq!(
+        states,
+        vec![
+            SessionState::Received,
+            SessionState::Analyzing,
+            SessionState::Arbitrating,
+            SessionState::Remediating,
+            SessionState::Verifying,
+            SessionState::Sealed,
+        ]
+    );
+}

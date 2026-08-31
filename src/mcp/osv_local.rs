@@ -194,6 +194,7 @@ impl OsvLocal {
                         .collect(),
                     severity,
                     fixed_versions: fixed.into_iter().collect(),
+                    ..Default::default()
                 },
                 ranges,
             });
@@ -268,7 +269,27 @@ impl VulnSource for OsvLocal {
                             && version_in_range(version, introduced, fixed)
                     });
             if matched {
-                out.push(advisory.record.clone());
+                let mut record = advisory.record.clone();
+                record.package_name = package_name.to_string();
+                record.ecosystem = ecosystem.to_string();
+                out.push(record);
+            }
+        }
+        Ok(out)
+    }
+
+    fn query_by_cve(&self, cve_id: &str) -> Result<Vec<VulnRecord>, McpError> {
+        let mut out = Vec::new();
+        for advisory in &self.advisories {
+            let matches = advisory.record.cves.iter().any(|c| c == cve_id)
+                || advisory.record.advisory_id == cve_id;
+            if matches {
+                let mut record = advisory.record.clone();
+                for (pkg, eco, _, _) in &advisory.ranges {
+                    record.package_name = pkg.clone();
+                    record.ecosystem = eco.clone();
+                    out.push(record.clone());
+                }
             }
         }
         Ok(out)
@@ -367,5 +388,44 @@ mod tests {
         assert_eq!(version_cmp("1.0", "1.0.0"), Ordering::Equal);
         assert_eq!(version_cmp("2.10.0", "2.9.9"), Ordering::Greater);
         assert_eq!(version_cmp("v1.2.3", "1.2.3"), Ordering::Equal);
+    }
+
+    #[test]
+    fn query_by_cve_finds_lodash_for_cve_2019_10744() {
+        let source = source();
+        let records = source.query_by_cve("CVE-2019-10744").expect("query");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].package_name, "lodash");
+        assert_eq!(records[0].ecosystem, "npm");
+        assert_eq!(records[0].severity, "critical");
+        assert_eq!(records[0].fixed_versions, vec!["4.17.12".to_string()]);
+    }
+
+    #[test]
+    fn query_by_cve_by_advisory_id_also_matches() {
+        let source = source();
+        let records = source
+            .query_by_cve("GHSA-DEMO-EXPRESS-2022")
+            .expect("query");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].package_name, "express");
+        assert_eq!(records[0].cves, vec!["CVE-2022-24999"]);
+    }
+
+    #[test]
+    fn query_by_cve_returns_empty_for_unknown_cve() {
+        let source = source();
+        let records = source.query_by_cve("CVE-9999-9999").expect("query");
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn query_by_cve_populates_package_and_ecosystem_for_all_ranges() {
+        let source = source();
+        let records = source.query_by_cve("CVE-2020-8203").expect("query");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].package_name, "lodash");
+        assert_eq!(records[0].ecosystem, "npm");
+        assert_eq!(records[0].fixed_versions, vec!["4.17.21".to_string()]);
     }
 }

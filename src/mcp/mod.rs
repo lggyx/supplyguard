@@ -18,7 +18,7 @@ pub use osv_local::OsvLocal;
 use thiserror::Error;
 
 /// One digested vulnerability advisory record.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub struct VulnRecord {
     /// Advisory identifier (e.g. `GHSA-...`).
     pub advisory_id: String,
@@ -28,6 +28,13 @@ pub struct VulnRecord {
     pub severity: String,
     /// Versions that fix the vulnerability (sorted).
     pub fixed_versions: Vec<String>,
+    /// Affected package name, when known (empty for backward-compatible
+    /// `query_vulns` results that are scoped to a single package).
+    #[serde(default)]
+    pub package_name: String,
+    /// Affected package ecosystem, when known.
+    #[serde(default)]
+    pub ecosystem: String,
 }
 
 /// Errors raised by mcp implementations.
@@ -68,6 +75,16 @@ pub trait VulnSource: Send + Sync {
         version: &str,
         ecosystem: &str,
     ) -> Result<Vec<VulnRecord>, McpError>;
+
+    /// Returns advisories that match the given CVE identifier across all
+    /// packages. The returned records include the affected package names,
+    /// ecosystems, and affected version ranges so callers can cross-reference
+    /// against their SBOM.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`McpError`] when the vulnerability database is unavailable.
+    fn query_by_cve(&self, cve_id: &str) -> Result<Vec<VulnRecord>, McpError>;
 }
 
 /// SPDX license data equivalent: normalization and knowledge lookup.

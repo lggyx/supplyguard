@@ -1,4 +1,4 @@
-//! LocalOrchestrator: the two guard-mode pipelines plus event emission.
+//! LocalOrchestrator: scan, guard, and reactive response pipelines.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -19,6 +19,7 @@ use crate::models::messages::{
 use crate::models::session::{SessionState, StateTransitionError};
 use crate::security::injection::InjectionDetector;
 use crate::skills::Skill;
+use crate::skills::cve_match::CveMatchInput;
 use crate::skills::license_check::{LicensePolicy, PackageLicense};
 use crate::skills::sbom_build::{SbomBuildInput, SbomBuildSkill, SbomSnapshot};
 
@@ -47,7 +48,7 @@ pub enum OrchestratorEvent {
     ScanStarted {
         /// Session id.
         session_id: String,
-        /// Entry mode label (`scan` or `guard`).
+        /// Entry mode label (`scan` / `guard` / `response`).
         mode: &'static str,
         /// Number of dependency changes in the request.
         total_changes: usize,
@@ -129,6 +130,48 @@ pub struct GuardOutcome {
     /// State timeline in traversal order.
     pub timeline: Vec<(SessionState, u64)>,
     /// SBOM snapshot (scan mode only).
+    pub snapshot: Option<SbomSnapshot>,
+}
+
+/// One affected package in a response-mode outcome.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ResponseAffectedPackage {
+    /// Package name.
+    pub package_name: String,
+    /// Currently installed version.
+    pub installed_version: String,
+    /// CVE identifiers that affect this package at this version.
+    pub cves: Vec<String>,
+    /// Advisory severity (highest across matched advisories).
+    pub severity: String,
+    /// Available fixed versions (sorted, deduped).
+    pub fixed_versions: Vec<String>,
+    /// Recommended action for this package.
+    pub recommended_action: String,
+}
+
+/// Full result of a reactive response-mode session.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ResponseOutcome {
+    /// Session id.
+    pub session_id: SessionId,
+    /// The CVE identifier that triggered this response.
+    pub cve_id: String,
+    /// Overall risk level across all affected packages.
+    pub risk_level: RiskLevel,
+    /// Overall verdict: block if any critical/high CVE found.
+    pub verdict: Verdict,
+    /// Total packages scanned from the SBOM.
+    pub total_scanned: usize,
+    /// Number of packages affected by the CVE.
+    pub affected_count: usize,
+    /// Per-package impact details.
+    pub affected_packages: Vec<ResponseAffectedPackage>,
+    /// Seal report with chain verification.
+    pub seal: SealReport,
+    /// State timeline in traversal order.
+    pub timeline: Vec<(SessionState, u64)>,
+    /// SBOM snapshot of the scanned project.
     pub snapshot: Option<SbomSnapshot>,
 }
 
@@ -247,7 +290,11 @@ impl LocalOrchestrator {
             ..OverviewSummary::default()
         };
         for outcome in &sessions {
-            match outcome.risk_level {
+            let (risk_level, verdict) = match outcome {
+                crate::runtime::store::SessionOutcome::Guard(o) => (o.risk_level, o.verdict),
+                crate::runtime::store::SessionOutcome::Response(o) => (o.risk_level, o.verdict),
+            };
+            match risk_level {
                 RiskLevel::Critical => summary.critical += 1,
                 RiskLevel::High => summary.high += 1,
                 RiskLevel::Medium => summary.medium += 1,
@@ -255,21 +302,24 @@ impl LocalOrchestrator {
                 RiskLevel::Safe => summary.safe += 1,
             }
             summary.recent_sessions.push(RecentSession {
-                session_id: outcome.session_id.to_string(),
-                source: serde_json::to_string(&outcome.source)
+                session_id: outcome.session_id().to_string(),
+                source: serde_json::to_string(&match outcome {
+                    crate::runtime::store::SessionOutcome::Guard(o) => o.source,
+                    crate::runtime::store::SessionOutcome::Response(_) => EventSource::Manual,
+                })
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_string(),
+                verdict: serde_json::to_string(&verdict)
                     .unwrap_or_default()
                     .trim_matches('"')
                     .to_string(),
-                verdict: serde_json::to_string(&outcome.verdict)
-                    .unwrap_or_default()
-                    .trim_matches('"')
-                    .to_string(),
-                risk_level: serde_json::to_string(&outcome.risk_level)
+                risk_level: serde_json::to_string(&risk_level)
                     .unwrap_or_default()
                     .trim_matches('"')
                     .to_string(),
                 timestamp: outcome
-                    .timeline
+                    .timeline()
                     .last()
                     .map(|(_, at)| *at)
                     .unwrap_or_default(),
@@ -378,6 +428,174 @@ impl LocalOrchestrator {
         self.pipeline_with_licenses(request, Some(snapshot), license_packages)
     }
 
+    /// Runs the reactive response pipeline: scan a project, then cross-reference
+    /// every package against a specific CVE to build a batch impact assessment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError`] on fatal skill or audit failures.
+    pub fn run_response(
+        &self,
+        cve_id: &str,
+        project_dir: &Path,
+    ) -> Result<ResponseOutcome, RuntimeError> {
+        let session_id = SessionId::new(format!("response-{}", TimestampMillis::now().as_u64()));
+        let mut timeline: Vec<(SessionState, u64)> =
+            vec![(SessionState::Received, TimestampMillis::now().as_u64())];
+
+        self.emit(&OrchestratorEvent::ScanStarted {
+            session_id: session_id.to_string(),
+            mode: "response",
+            total_changes: 0,
+        });
+
+        // received -> analyzing
+        let mut state = SessionState::Received;
+        state = state.advance(SessionState::Analyzing)?;
+        timeline.push((state, TimestampMillis::now().as_u64()));
+        self.emit(&OrchestratorEvent::ScanProgress {
+            session_id: session_id.to_string(),
+            state,
+        });
+
+        let lockfile = project_dir.join("package-lock.json");
+        let sbom_skill = SbomBuildSkill;
+        let snapshot = sbom_skill.run(&SbomBuildInput {
+            lockfile_path: lockfile.display().to_string(),
+            include_dev: false,
+        })?;
+        let total_scanned = snapshot.packages.len();
+
+        // analyzing -> arbitrating
+        state = state.advance(SessionState::Arbitrating)?;
+        timeline.push((state, TimestampMillis::now().as_u64()));
+        self.emit(&OrchestratorEvent::ScanProgress {
+            session_id: session_id.to_string(),
+            state,
+        });
+
+        let mut affected_packages: Vec<ResponseAffectedPackage> = Vec::new();
+        for node in &snapshot.packages {
+            let vulns = self.analyst.cve_skill()?.run(&CveMatchInput {
+                package_name: node.name.clone(),
+                version: node.version.clone(),
+                ecosystem: "npm".to_string(),
+            })?;
+
+            if !vulns.cves.contains(&cve_id.to_string())
+                && !vulns.cves.iter().any(|c| c.eq_ignore_ascii_case(cve_id))
+            {
+                continue;
+            }
+
+            let severity = vulns.max_severity.unwrap_or_else(|| "unknown".to_string());
+            let recommended_action = if severity == "critical" || severity == "high" {
+                "bump-version".to_string()
+            } else {
+                "review".to_string()
+            };
+
+            affected_packages.push(ResponseAffectedPackage {
+                package_name: node.name.clone(),
+                installed_version: node.version.clone(),
+                cves: vulns.cves.clone(),
+                severity: severity.clone(),
+                fixed_versions: vulns.fixed_versions.clone(),
+                recommended_action,
+            });
+        }
+
+        let affected_count = affected_packages.len();
+        let (risk_level, verdict) = if affected_packages.is_empty() {
+            (RiskLevel::Safe, Verdict::Allow)
+        } else if affected_packages
+            .iter()
+            .any(|p| p.severity == "critical" || p.severity == "high")
+        {
+            (RiskLevel::Critical, Verdict::Block)
+        } else {
+            (RiskLevel::High, Verdict::RequireHumanReview)
+        };
+
+        self.emit(&OrchestratorEvent::GuardVerdict {
+            session_id: session_id.to_string(),
+            verdict: verdict_value(&verdict),
+            risk_level: risk_value(&risk_level),
+        });
+        self.emit(&OrchestratorEvent::AuditAppended {
+            session_id: session_id.to_string(),
+            event: "verdict".to_string(),
+        });
+
+        // arbitrating -> remediating
+        state = state.advance(SessionState::Remediating)?;
+        timeline.push((state, TimestampMillis::now().as_u64()));
+        self.emit(&OrchestratorEvent::ScanProgress {
+            session_id: session_id.to_string(),
+            state,
+        });
+
+        let mut artifacts = std::collections::BTreeMap::new();
+        artifacts.insert(
+            "action_taken".to_string(),
+            serde_json::json!(if affected_packages.is_empty() {
+                "no_action_required"
+            } else {
+                "batch_impact_assessment_complete"
+            }),
+        );
+        let remediation = RemediationResult {
+            session_id: session_id.clone(),
+            success: true,
+            artifacts,
+            logs_hash: String::new(),
+            regression_detected: None,
+            completed_at: TimestampMillis::now(),
+        };
+
+        // remediating -> verifying
+        state = state.advance(SessionState::Verifying)?;
+        timeline.push((state, TimestampMillis::now().as_u64()));
+        self.emit(&OrchestratorEvent::ScanProgress {
+            session_id: session_id.to_string(),
+            state,
+        });
+
+        let seal = self.auditor.seal(&remediation)?;
+        self.emit(&OrchestratorEvent::AuditAppended {
+            session_id: session_id.to_string(),
+            event: "sealed".to_string(),
+        });
+
+        // verifying -> sealed
+        state = state.advance(SessionState::Sealed)?;
+        timeline.push((state, TimestampMillis::now().as_u64()));
+        self.emit(&OrchestratorEvent::ScanProgress {
+            session_id: session_id.to_string(),
+            state,
+        });
+
+        let outcome = ResponseOutcome {
+            session_id: session_id.clone(),
+            cve_id: cve_id.to_string(),
+            risk_level,
+            verdict,
+            total_scanned,
+            affected_count,
+            affected_packages,
+            seal,
+            timeline,
+            snapshot: Some(snapshot),
+        };
+        self.emit(&OrchestratorEvent::ScanCompleted {
+            session_id: session_id.to_string(),
+            verdict: verdict_value(&outcome.verdict),
+            risk_level: risk_value(&outcome.risk_level),
+        });
+        self.store.push_response(outcome.clone());
+        Ok(outcome)
+    }
+
     /// Shared pipeline: analyze -> arbitrate -> remediate -> seal, advancing
     /// the state machine and emitting events at every step.
     fn pipeline(
@@ -484,7 +702,7 @@ impl LocalOrchestrator {
             verdict: verdict_value(&outcome.verdict),
             risk_level: risk_value(&outcome.risk_level),
         });
-        self.store.push(outcome.clone());
+        self.store.push_guard(outcome.clone());
         Ok(outcome)
     }
 

@@ -12,7 +12,9 @@ use supplyguard::config::Config;
 use supplyguard::mcp::{NpmLocal, OsvLocal, SpdxLocal};
 use supplyguard::models::ids::SessionId;
 use supplyguard::models::messages::{EventSource, Verdict};
-use supplyguard::runtime::orchestrator::{GuardOutcome, LocalOrchestrator, RuntimeTools};
+use supplyguard::runtime::orchestrator::{
+    GuardOutcome, LocalOrchestrator, ResponseOutcome, RuntimeTools,
+};
 use supplyguard::security::injection::InjectionDetector;
 
 /// Exit code: verdict allow (or informational success).
@@ -85,6 +87,22 @@ pub enum Command {
         #[arg(long, default_value = "127.0.0.1:7878")]
         bind: String,
     },
+    /// Reactive response: cross-reference a CVE against a project's SBOM.
+    ///
+    /// Exit codes: 0 allow (CVE not found in project), 3 human review,
+    /// 4 block (critical/high CVE found), 1 operational error.
+    Response {
+        /// CVE identifier to check (e.g. CVE-2020-8203).
+        cve: String,
+        /// Project directory containing package.json / package-lock.json.
+        path: PathBuf,
+        /// Report output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+        format: OutputFormat,
+        /// Audit chain database path (default: ./supplyguard-audit.db).
+        #[arg(long)]
+        audit_db: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -124,6 +142,21 @@ fn run() -> i32 {
             }
         },
         Command::Serve { bind } => run_serve(bind),
+        Command::Response {
+            cve,
+            path,
+            format,
+            audit_db,
+        } => match run_response(&cve, &path, audit_db) {
+            Ok(outcome) => {
+                print_response_report(&outcome, format);
+                exit_code_for(&outcome.verdict)
+            }
+            Err(message) => {
+                eprintln!("supplyguard: error: {message}");
+                EXIT_ERROR
+            }
+        },
     }
 }
 
@@ -295,6 +328,21 @@ fn run_guard(diff: &std::path::Path, audit_db: Option<PathBuf>) -> Result<GuardO
         .map_err(|err| err.to_string())
 }
 
+fn run_response(
+    cve: &str,
+    path: &std::path::Path,
+    audit_db: Option<PathBuf>,
+) -> Result<ResponseOutcome, String> {
+    if !path.is_dir() {
+        return Err(format!("project directory not found: {}", path.display()));
+    }
+    let config = load_config(audit_db)?;
+    let orchestrator = build_orchestrator(&config)?;
+    orchestrator
+        .run_response(cve, path)
+        .map_err(|err| err.to_string())
+}
+
 fn now_suffix() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -318,6 +366,78 @@ fn print_report(outcome: &GuardOutcome, format: OutputFormat) {
         ),
         OutputFormat::Markdown => print!("{}", markdown_report(outcome)),
     }
+}
+
+fn print_response_report(outcome: &ResponseOutcome, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(outcome).unwrap_or_default()
+        ),
+        OutputFormat::Markdown => print!("{}", response_markdown_report(outcome)),
+    }
+}
+
+/// Renders the human-readable Markdown report for response mode.
+fn response_markdown_report(outcome: &ResponseOutcome) -> String {
+    let mut report = String::new();
+    report.push_str("# SupplyGuard Response Report\n\n");
+    report.push_str(&format!(
+        "| Field | Value |\n| --- | --- |\n\
+         | Session | `{}` |\n\
+         | CVE | `{}` |\n\
+         | Verdict | **{}** |\n\
+         | Risk level | {} |\n\
+         | Packages scanned | {} |\n\
+         | Affected | {} |\n\
+         | Audit sealed | {} (head `{}`) |\n\n",
+        outcome.session_id,
+        outcome.cve_id,
+        verdict_label(&outcome.verdict),
+        risk_label(&outcome.risk_level),
+        outcome.total_scanned,
+        outcome.affected_count,
+        if outcome.seal.verified {
+            "✓ verified"
+        } else {
+            "✗ BROKEN"
+        },
+        &outcome.seal.head_hash[..16.min(outcome.seal.head_hash.len())],
+    ));
+    if !outcome.affected_packages.is_empty() {
+        report.push_str("## Affected packages\n\n");
+        report.push_str(
+            "| Package | Installed | Severity | Fixed versions | Action |\n| --- | --- | --- | --- | --- |\n",
+        );
+        for pkg in &outcome.affected_packages {
+            let fixed = pkg.fixed_versions.join(", ");
+            report.push_str(&format!(
+                "| {} | {} | {} | {} | {} |\n",
+                pkg.package_name,
+                pkg.installed_version,
+                pkg.severity,
+                if fixed.is_empty() { "none" } else { &fixed },
+                pkg.recommended_action,
+            ));
+        }
+        report.push('\n');
+    }
+    if let Some(snapshot) = &outcome.snapshot {
+        report.push_str(&format!(
+            "\n## Dependencies ({})\n\n| Package | Version | License | Direct |\n| --- | --- | --- | --- |\n",
+            snapshot.packages.len()
+        ));
+        for package in &snapshot.packages {
+            report.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                package.name,
+                package.version,
+                package.license.as_deref().unwrap_or("unknown"),
+                if package.direct { "yes" } else { "no" }
+            ));
+        }
+    }
+    report
 }
 
 /// Renders the human-readable Markdown report (system-generated text only).
@@ -495,5 +615,43 @@ mod tests {
         assert_eq!(exit_code_for(&Verdict::Allow), EXIT_ALLOW);
         assert_eq!(exit_code_for(&Verdict::RequireHumanReview), EXIT_REVIEW);
         assert_eq!(exit_code_for(&Verdict::Block), EXIT_BLOCK);
+    }
+
+    #[test]
+    fn response_parses_cve_and_path() {
+        let cli = Cli::try_parse_from([
+            "supplyguard",
+            "response",
+            "CVE-2020-8203",
+            "fixtures/demo-app",
+        ])
+        .expect("parse");
+        match cli.command {
+            Command::Response { cve, path, .. } => {
+                assert_eq!(cve, "CVE-2020-8203");
+                assert_eq!(path, PathBuf::from("fixtures/demo-app"));
+            }
+            other => panic!("expected response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn response_supports_markdown_format() {
+        let cli = Cli::try_parse_from([
+            "supplyguard",
+            "response",
+            "CVE-2019-10744",
+            "fixtures/demo-app",
+            "--format",
+            "markdown",
+        ])
+        .expect("parse");
+        match cli.command {
+            Command::Response { cve, format, .. } => {
+                assert_eq!(cve, "CVE-2019-10744");
+                assert_eq!(format, OutputFormat::Markdown);
+            }
+            other => panic!("expected response, got {other:?}"),
+        }
     }
 }

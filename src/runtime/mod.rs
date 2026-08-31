@@ -3,5 +3,8 @@
 pub mod orchestrator;
 pub mod store;
 
-pub use orchestrator::{GuardOutcome, LocalOrchestrator, OrchestratorEvent, RuntimeTools};
+pub use orchestrator::{
+    GuardOutcome, LocalOrchestrator, OrchestratorEvent, ResponseAffectedPackage, ResponseOutcome,
+    RuntimeTools,
+};
 pub use store::SessionStore;

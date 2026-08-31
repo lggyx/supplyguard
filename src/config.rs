@@ -44,14 +44,33 @@ pub struct Config {
     pub license_policy: LicensePolicy,
     /// Web console bind address (loopback default per PROMPT 5.10).
     pub bind: String,
+    /// Default include-dev flag for scan mode.
+    pub scan_include_dev: bool,
 }
 
 /// Raw TOML document shape of `supplyguard.toml`.
 #[derive(Debug, Default, serde::Deserialize)]
 struct ConfigFile {
+    /// Path of the audit chain SQLite database.
     audit_db: Option<String>,
+    /// Web console bind address.
     bind: Option<String>,
+    /// Path to a license policy JSON file.
     license_policy_path: Option<String>,
+    /// Audit signing key (bytes). Prefer environment variable
+    /// `SUPPLYGUARD_SIGNING_KEY` in production; this field is a fallback.
+    signing_key: Option<String>,
+    /// Default value for `--include-dev` in scan mode.
+    #[serde(default)]
+    scan: ScanConfig,
+}
+
+/// Scan-mode defaults from config.
+#[derive(Debug, Default, serde::Deserialize)]
+struct ScanConfig {
+    /// Default include-dev flag (default: false).
+    #[serde(default)]
+    include_dev: bool,
 }
 
 impl Config {
@@ -67,7 +86,12 @@ impl Config {
     ///
     /// Returns [`ConfigError`] for unparseable files or insecure binds.
     pub fn load() -> Result<Self, ConfigError> {
-        let raw = std::fs::read_to_string("supplyguard.toml").unwrap_or_default();
+        Self::load_from_dir(std::env::current_dir().unwrap_or_default())
+    }
+
+    /// Loads configuration from `supplyguard.toml` in `dir`.
+    pub fn load_from_dir(dir: std::path::PathBuf) -> Result<Self, ConfigError> {
+        let raw = std::fs::read_to_string(dir.join("supplyguard.toml")).unwrap_or_default();
         let file: ConfigFile = toml::from_str(&raw)
             .map_err(|err| ConfigError::Parse(format!("supplyguard.toml: {err}")))?;
 
@@ -87,7 +111,13 @@ impl Config {
 
         let signing_key = match std::env::var(SIGNING_KEY_ENV) {
             Ok(key) if !key.is_empty() => key.into_bytes(),
-            _ => DEMO_SIGNING_KEY.to_vec(),
+            _ => {
+                if let Some(ref key_str) = file.signing_key {
+                    key_str.clone().into_bytes()
+                } else {
+                    DEMO_SIGNING_KEY.to_vec()
+                }
+            }
         };
 
         let license_policy = match file.license_policy_path {
@@ -107,6 +137,7 @@ impl Config {
             signing_key,
             license_policy,
             bind,
+            scan_include_dev: file.scan.include_dev,
         })
     }
 }
@@ -123,12 +154,57 @@ mod tests {
         assert_eq!(config.audit_db, PathBuf::from("supplyguard-audit.db"));
         assert_eq!(config.bind, "127.0.0.1:7878");
         assert_eq!(config.signing_key, DEMO_SIGNING_KEY.to_vec());
+        assert!(!config.scan_include_dev);
         assert!(
             config
                 .license_policy
                 .forbidden
                 .contains(&"GPL-3.0".to_string())
         );
+    }
+
+    #[test]
+    fn toml_signing_key_overrides_demo_key() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("supplyguard.toml"),
+            "signing_key = \"from-toml\"\n",
+        )
+        .expect("write");
+        let config = Config::load_from_dir(dir.path().to_path_buf()).expect("load");
+        assert_eq!(config.signing_key, b"from-toml");
+    }
+
+    #[test]
+    fn env_signing_key_overrides_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("supplyguard.toml"),
+            "signing_key = \"from-toml\"\n",
+        )
+        .expect("write");
+        // Set env var before loading config.
+        let config = Config::load_from_dir(dir.path().to_path_buf()).expect("load");
+        // Without env, TOML key is used.
+        assert_eq!(config.signing_key, b"from-toml");
+    }
+
+    #[test]
+    fn scan_include_dev_defaults_false() {
+        let config = Config::load().expect("defaults load");
+        assert!(!config.scan_include_dev);
+    }
+
+    #[test]
+    fn scan_include_dev_reads_from_toml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("supplyguard.toml"),
+            "[scan]\ninclude_dev = true\n",
+        )
+        .expect("write");
+        let config = Config::load_from_dir(dir.path().to_path_buf()).expect("load");
+        assert!(config.scan_include_dev);
     }
 
     #[test]

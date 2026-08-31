@@ -47,6 +47,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/audit", get(api::audit))
         .route("/api/scan", post(api::trigger_scan))
         .route("/api/guard", post(api::trigger_guard))
+        .route("/api/response", post(api::trigger_response))
         .route("/api/events", get(sse::events))
         .fallback(get(not_found))
         .with_state(state)

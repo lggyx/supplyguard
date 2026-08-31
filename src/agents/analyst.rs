@@ -98,6 +98,10 @@ impl Analyst {
     ///
     /// Propagates fatal skill errors; degradable anomalies stay inside the
     /// signal outputs.
+    pub fn cve_skill(&self) -> Result<&CveMatchSkill, crate::skills::SkillError> {
+        Ok(&self.cve)
+    }
+
     fn signals_for_change(
         &self,
         change: &DependencyChange,

@@ -171,6 +171,10 @@ mod tests {
         ) -> Result<Vec<VulnRecord>, McpError> {
             Err(McpError::Unavailable("database down".to_string()))
         }
+
+        fn query_by_cve(&self, _cve_id: &str) -> Result<Vec<VulnRecord>, McpError> {
+            Err(McpError::Unavailable("database down".to_string()))
+        }
     }
 
     fn skill() -> CveMatchSkill {
@@ -270,12 +274,14 @@ mod tests {
                 cves: vec!["CVE-1".into()],
                 severity: "high".into(),
                 fixed_versions: vec!["1.1".into()],
+                ..Default::default()
             },
             VulnRecord {
                 advisory_id: "B".into(),
                 cves: vec!["CVE-2".into()],
                 severity: "critical".into(),
                 fixed_versions: vec!["2.0".into()],
+                ..Default::default()
             },
         ];
         let output = from_records("pkg", "1.0.0", &records);
