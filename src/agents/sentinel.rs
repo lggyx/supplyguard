@@ -16,6 +16,7 @@ impl Sentinel {
 
     pub async fn initialize(&self, target: &str) -> Result<(), SentinelError> {
         // TODO: 标记目标目录为 UNTRUSTED，剥离零宽字符
+        tracing::info!("Sentinel: 初始化目标目录: {}", target);
         Ok(())
     }
 }

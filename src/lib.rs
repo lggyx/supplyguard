@@ -11,3 +11,10 @@ pub mod output;
 pub mod models;
 
 pub use pipeline::Orchestrator;
+pub use agents::analyst::Analyst;
+pub use agents::auditor::{Auditor, Verdict};
+pub use agents::cve::CveAgent;
+pub use agents::hallucination::HallucinationAgent;
+pub use agents::license::LicenseAgent;
+pub use agents::sentinel::Sentinel;
+pub use mcp::{NpmLocal, OsvLocal, SpdxLocal};

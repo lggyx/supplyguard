@@ -1,6 +1,11 @@
 use clap::{Parser, Subcommand};
 use serde::Serialize;
-use supplyguard::agents::analyst::{Analyst, PackageInfo, Sbom};
+use supplyguard::agents::analyst::Analyst;
+use supplyguard::agents::auditor::{Auditor, Verdict};
+use supplyguard::agents::cve::CveAgent;
+use supplyguard::agents::hallucination::HallucinationAgent;
+use supplyguard::agents::license::LicenseAgent;
+use supplyguard::agents::sentinel::Sentinel;
 use supplyguard::pipeline::Orchestrator;
 
 /// SupplyGuard - AI 编程时代的供应链安全防御 CLI 工具
@@ -59,7 +64,16 @@ struct ScanOutput {
     session_id: String,
     status: String,
     packages_total: usize,
-    packages: Vec<PackageInfo>,
+    findings: Vec<Verdict>,
+    summary: ScanSummary,
+}
+
+#[derive(Serialize)]
+struct ScanSummary {
+    allow: usize,
+    review: usize,
+    block: usize,
+    reasoning: String,
 }
 
 #[tokio::main]
@@ -69,14 +83,6 @@ async fn main() {
         .init();
 
     let cli = Cli::parse();
-
-    let orchestrator = match Orchestrator::new() {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("初始化失败: {}", e);
-            std::process::exit(1);
-        }
-    };
 
     match cli.command {
         Commands::Scan { path, include_dev, .. } => {
@@ -89,26 +95,87 @@ async fn main() {
                 path.clone()
             };
 
-            // 解析 SBOM
-            let npm = supplyguard::mcp::NpmLocal::new();
-            let analyst = Analyst::new(Box::new(npm));
+            // 1. Sentinel 初始化
+            let sentinel = Sentinel::new();
+            if let Err(e) = sentinel.initialize(&lockfile_path).await {
+                eprintln!("初始化失败: {}", e);
+                std::process::exit(1);
+            }
 
-            match analyst.build_sbom(&lockfile_path) {
-                Ok(sbom) => {
-                    let output = ScanOutput {
-                        session_id: session_id.clone(),
-                        status: "completed".to_string(),
-                        packages_total: sbom.total,
-                        packages: sbom.packages,
-                    };
-
-                    println!("{}", serde_json::to_string_pretty(&output).unwrap());
-                }
+            // 2. Analyst 解析 SBOM
+            let analyst = Analyst::new();
+            let sbom = match analyst.build_sbom(&lockfile_path) {
+                Ok(sbom) => sbom,
                 Err(e) => {
                     eprintln!("扫描失败: {}", e);
                     std::process::exit(1);
                 }
+            };
+
+            tracing::info!("解析完成: {} 个包", sbom.total);
+
+            // 3. 并行运行 Hallucination + CVE + License 检查
+            let npm = supplyguard::mcp::NpmLocal::new();
+            let osv = supplyguard::mcp::OsvLocal::new();
+            let spdx = supplyguard::mcp::SpdxLocal::new();
+
+            let hallucination = HallucinationAgent::new(Box::new(npm));
+            let cve = CveAgent::new(Box::new(osv));
+            let license = LicenseAgent::new(Box::new(spdx));
+            let auditor = Auditor::new();
+
+            let mut findings = Vec::new();
+            let mut allow_count = 0;
+            let mut review_count = 0;
+            let mut block_count = 0;
+
+            for pkg in &sbom.packages {
+                if !include_dev && pkg.dev {
+                    continue;
+                }
+
+                // 并行检查
+                let h_result = hallucination.check(&pkg.name).await.ok();
+                let c_result = cve.check(&pkg.name, &pkg.version).await.ok();
+                let l_result = license.check(&pkg.name, &pkg.license.clone().unwrap_or_default()).await.ok();
+
+                // Auditor 综合裁决
+                let verdict = match auditor.issue_verdict(&pkg.name, &pkg.version, h_result.as_ref(), c_result.as_ref(), l_result.as_ref()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("裁决失败 ({}): {}", pkg.name, e);
+                        continue;
+                    }
+                };
+
+                match verdict.decision.as_str() {
+                    "ALLOW" => allow_count += 1,
+                    "REVIEW" => review_count += 1,
+                    "BLOCK" => block_count += 1,
+                    _ => {}
+                }
+
+                findings.push(verdict);
             }
+
+            // 4. 输出结果
+            let output = ScanOutput {
+                session_id: session_id.clone(),
+                status: "completed".to_string(),
+                packages_total: sbom.total,
+                findings,
+                summary: ScanSummary {
+                    allow: allow_count,
+                    review: review_count,
+                    block: block_count,
+                    reasoning: format!(
+                        "对 {} 个包完成多信号分析：{} ALLOW / {} REVIEW / {} BLOCK",
+                        sbom.total, allow_count, review_count, block_count
+                    ),
+                },
+            };
+
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
         }
         Commands::Guard { diff } => {
             println!("守门模式: {} (TODO)", diff);

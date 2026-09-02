@@ -1,3 +1,5 @@
+use crate::agents::cve::CveError;
+use crate::mcp::{McpError, VulnSource};
 use thiserror::Error;
 
 /// CVE 错误
@@ -5,17 +7,63 @@ use thiserror::Error;
 pub enum CveError {
     #[error("vuln query failed: {0}")]
     QueryFailed(String),
+
+    #[error("mcp error: {0}")]
+    Mcp(#[from] McpError),
 }
 
-pub struct CveAgent;
+pub struct CveAgent {
+    vuln_source: Box<dyn VulnSource>,
+}
 
 impl CveAgent {
-    pub fn new() -> Self {
-        Self
+    pub fn new(vuln_source: Box<dyn VulnSource>) -> Self {
+        Self { vuln_source }
     }
 
-    pub async fn check(&self, package: &str, version: &str) -> Result<(), CveError> {
-        // TODO: 查询 OSV 本地数据库
-        Ok(())
+    /// 检查包的 CVE 漏洞
+    pub async fn check(&self, package: &str, version: &str) -> Result<CveResult, CveError> {
+        let vulns = self
+            .vuln_source
+            .query_vulns(package, version, "npm")
+            .map_err(|e| CveError::Mcp(e))?;
+
+        if vulns.is_empty() {
+            return Ok(CveResult {
+                package: package.to_string(),
+                version: version.to_string(),
+                has_cve: false,
+                vulns: Vec::new(),
+                severity: "none".to_string(),
+                reasoning: format!("{}@{} 无已知 CVE", package, version),
+            });
+        }
+
+        let max_severity = vulns.iter().map(|v| v.severity.as_str()).max().unwrap_or("low");
+
+        Ok(CveResult {
+            package: package.to_string(),
+            version: version.to_string(),
+            has_cve: true,
+            vulns: vulns.into_iter().map(|v| v.advisory_id).collect(),
+            severity: max_severity.to_string(),
+            reasoning: format!(
+                "{}@{} 命中 {} 个 CVE，最高严重级别: {}",
+                package,
+                version,
+                vulns.len(),
+                max_severity
+            ),
+        })
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CveResult {
+    pub package: String,
+    pub version: String,
+    pub has_cve: bool,
+    pub vulns: Vec<String>,
+    pub severity: String,
+    pub reasoning: String,
 }
