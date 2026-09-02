@@ -3,9 +3,9 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 use crate::agents::analyst::Analyst;
-use crate::agents::auditor::Auditor;
-use crate::agents::hallucination::HallucinationAgent;
+use crate::agents::auditor::{Auditor, Verdict};
 use crate::agents::cve::CveAgent;
+use crate::agents::hallucination::HallucinationAgent;
 use crate::agents::license::LicenseAgent;
 use crate::agents::sentinel::Sentinel;
 use crate::audit::AuditChain;
