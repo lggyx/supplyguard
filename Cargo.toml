@@ -1,0 +1,33 @@
+[package]
+name = "supplyguard"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors = ["lggyx <lggyx9527@gmail.com>"]
+description = "AI 编程时代的供应链安全防御 CLI 工具"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+toml = "0.8"
+rusqlite = { version = "0.31", features = ["bundled"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+notify = "6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
+[[bin]]
+name = "supplyguard"
+path = "src/main.rs"
