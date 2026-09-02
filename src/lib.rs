@@ -8,5 +8,6 @@ pub mod mcp;
 pub mod store;
 pub mod audit;
 pub mod output;
+pub mod models;
 
 pub use pipeline::Orchestrator;

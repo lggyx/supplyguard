@@ -7,3 +7,4 @@ pub mod cve;
 pub mod license;
 pub mod auditor;
 pub mod remediator;
+pub mod monitor;

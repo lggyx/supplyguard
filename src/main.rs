@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+use serde::Serialize;
+use supplyguard::agents::analyst::{Analyst, PackageInfo, Sbom};
 use supplyguard::pipeline::Orchestrator;
 
 /// SupplyGuard - AI 编程时代的供应链安全防御 CLI 工具
@@ -52,6 +54,14 @@ enum Commands {
     },
 }
 
+#[derive(Serialize)]
+struct ScanOutput {
+    session_id: String,
+    status: String,
+    packages_total: usize,
+    packages: Vec<PackageInfo>,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -60,7 +70,7 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    let orchestrator = match Orchestrator::new().await {
+    let orchestrator = match Orchestrator::new() {
         Ok(o) => o,
         Err(e) => {
             eprintln!("初始化失败: {}", e);
@@ -69,14 +79,39 @@ async fn main() {
     };
 
     match cli.command {
-        Commands::Scan { path, json, include_dev } => {
-            println!("扫描目录: {} (include_dev: {})", path, include_dev);
-            println!("JSON 输出: {}", json);
-            // TODO: 实现 scan 逻辑
+        Commands::Scan { path, include_dev, .. } => {
+            let session_id = format!("scan-{}", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+
+            // 查找 package-lock.json
+            let lockfile_path = if std::path::Path::new(&path).is_dir() {
+                format!("{}/package-lock.json", path)
+            } else {
+                path.clone()
+            };
+
+            // 解析 SBOM
+            let npm = supplyguard::mcp::NpmLocal::new();
+            let analyst = Analyst::new(Box::new(npm));
+
+            match analyst.build_sbom(&lockfile_path) {
+                Ok(sbom) => {
+                    let output = ScanOutput {
+                        session_id: session_id.clone(),
+                        status: "completed".to_string(),
+                        packages_total: sbom.total,
+                        packages: sbom.packages,
+                    };
+
+                    println!("{}", serde_json::to_string_pretty(&output).unwrap());
+                }
+                Err(e) => {
+                    eprintln!("扫描失败: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::Guard { diff } => {
-            println!("守门模式: {}", diff);
-            // TODO: 实现 guard 逻辑
+            println!("守门模式: {} (TODO)", diff);
         }
         Commands::Monitor { path, include_dev } => {
             println!("监控目录: {} (include_dev: {})", path, include_dev);
@@ -84,16 +119,13 @@ async fn main() {
             // TODO: 实现 monitor 逻辑
         }
         Commands::Overview => {
-            println!("实时状态查询");
-            // TODO: 实现 overview 逻辑
+            println!("实时状态查询 (TODO)");
         }
         Commands::Timeline { session_id } => {
-            println!("时间线: {}", session_id);
-            // TODO: 实现 timeline 逻辑
+            println!("时间线: {} (TODO)", session_id);
         }
         Commands::Audit { verify } => {
-            println!("审计链 (verify: {})", verify);
-            // TODO: 实现 audit 逻辑
+            println!("审计链 (verify: {}) (TODO)", verify);
         }
     }
 }
