@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SUPPLYGUARD // lggyx</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --panel: #f5f5f5; --border: #000000;
+    --text: #000000; --muted: #555555;
+    --accent: #ff003c; --yellow: #ffff00; --cyan: #00ffff;
+    --purple: #a000ff; --green: #00aa00; --red: #ff0000;
+    --blue: #0000ff; --orange: #ff6600;
+  }
+  :root.dark {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #c9d1d9;
+    --accent: #ff003c; --yellow: #d2991d; --cyan: #00ffff;
+    --purple: #8957e5; --green: #238636; --red: #ff4444;
+    --blue: #58a6ff; --orange: #d2991d;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Courier New", Courier, monospace;
+    line-height: 1.4; padding: 0;
+  }
+
+  header {
+    background: var(--text); color: var(--bg);
+    padding: 20px 32px; border-bottom: 4px solid var(--accent);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .logo { font-size: 24px; font-weight: 900; letter-spacing: 2px; }
+  .logo-sub { font-size: 11px; color: var(--muted); margin-top: 4px; letter-spacing: 1px; }
+  :root.dark .logo-sub { color: #aaa; }
+  .header-meta { font-size: 12px; text-align: right; color: var(--muted); }
+  :root.dark .header-meta { color: #aaa; }
+
+  #themeToggle {
+    position: fixed; top: 12px; right: 12px; z-index: 50;
+    background: var(--bg); border: 2px solid var(--border); color: var(--text);
+    padding: 6px 14px; font-family: inherit; font-size: 11px; font-weight: 900;
+    text-transform: uppercase; cursor: pointer;
+  }
+
+  nav {
+    background: var(--panel); border-bottom: 2px solid var(--border);
+    padding: 0 32px; display: flex; gap: 0;
+  }
+  .nav-tab {
+    padding: 12px 20px; color: var(--muted); cursor: pointer;
+    border-bottom: 3px solid transparent; font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .nav-tab:hover { color: var(--text); background: var(--bg); }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  main { padding: 24px 32px; max-width: 1440px; margin: 0 auto; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .action-btn {
+    background: var(--bg); border: 2px solid var(--border); color: var(--text);
+    padding: 12px 24px; font-family: inherit; font-size: 13px; font-weight: 700;
+    text-transform: uppercase; cursor: pointer; letter-spacing: 1px;
+  }
+  .action-btn:hover { background: var(--yellow); }
+  .action-btn.danger:hover { background: var(--red); color: #fff; }
+  .action-btn.primary { background: var(--text); color: var(--bg); }
+  .action-btn.primary:hover { background: var(--accent); color: #fff; }
+  .action-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .action-btn-lg { padding: 16px 32px; font-size: 16px; }
+
+  .section-header {
+    background: var(--panel); border: 2px solid var(--border); border-bottom: none;
+    padding: 10px 16px; font-size: 13px; font-weight: 900;
+    text-transform: uppercase; letter-spacing: 2px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 2px solid var(--border); border-right: 1px solid var(--border); }
+  th:last-child, td:last-child { border-right: none; }
+  th { background: var(--panel); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+  tr:hover { background: var(--yellow); }
+  tr.block-row:hover { background: #ffcccc; }
+  :root.dark tr.block-row:hover { background: #5c1a1a; }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border: 2px solid var(--border);
+    font-size: 11px; font-weight: 900; text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .badge.allow { background: var(--green); color: #fff; border-color: var(--green); }
+  .badge.review { background: var(--yellow); color: var(--text); border-color: var(--border); }
+  .badge.block { background: var(--red); color: #fff; border-color: var(--red); }
+  .badge.pending { background: var(--panel); color: var(--muted); }
+  .badge.info { background: var(--cyan); color: var(--text); border-color: var(--border); }
+  .badge.warn { background: var(--orange); color: #fff; border-color: var(--orange); }
+
+  .terminal {
+    background: var(--bg); border: 2px solid var(--border); border-top: none;
+    padding: 16px 20px; margin-bottom: 24px; font-size: 13px;
+    max-height: 300px; overflow-y: auto;
+  }
+  .terminal-header {
+    background: var(--panel); border-bottom: 2px solid var(--border);
+    padding: 8px 12px; margin: -16px -20px 12px -20px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  .terminal-line { padding: 2px 0; }
+  .terminal-line.info { color: var(--muted); }
+  .terminal-line.success { color: var(--green); }
+  .terminal-line.warn { color: var(--orange); }
+  .terminal-line.error { color: var(--red); }
+  .terminal-line.accent { color: var(--accent); font-weight: 700; }
+  :root.dark .terminal-line.info { color: #8b949e; }
+  .terminal-cursor {
+    display: inline-block; width: 8px; height: 14px;
+    background: var(--text); animation: blink 1s step-end infinite;
+    vertical-align: middle; margin-left: 4px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .flow-step {
+    display: flex; border: 2px solid var(--border); background: var(--bg);
+  }
+  .flow-step + .flow-step { border-top: none; }
+  .flow-step-num {
+    width: 56px; background: var(--panel); border-right: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 900; flex-shrink: 0;
+  }
+  .flow-step-body { flex: 1; padding: 16px 20px; }
+  .flow-step-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .flow-step-desc { font-size: 12px; color: var(--muted); }
+  :root.dark .flow-step-desc { color: #8b949e; }
+  .flow-step-input { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
+  .flow-step-input input {
+    flex: 1; background: var(--bg); border: 2px solid var(--border);
+    color: var(--text); padding: 10px 14px; font-family: inherit; font-size: 14px;
+  }
+  .flow-step-input input:focus { border-color: var(--accent); outline: none; }
+
+  .agent-card {
+    background: var(--bg); border: 2px solid var(--border); border-top: none;
+    padding: 20px 24px; margin-bottom: 24px;
+  }
+  .agent-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+  }
+  .agent-icon {
+    width: 36px; height: 36px; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 900;
+  }
+  .agent-title { font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+  .agent-subtitle { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  :root.dark .agent-subtitle { color: #8b949e; }
+
+  .reasoning-block {
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); padding: 12px 16px;
+    margin-bottom: 10px; font-size: 12px; line-height: 1.7;
+  }
+  .reasoning-block .label { font-weight: 900; text-transform: uppercase; font-size: 10px; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
+  .reasoning-block .evidence { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  :root.dark .reasoning-block .evidence { color: #8b949e; }
+
+  .verdict-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border: 2px solid var(--border); border-bottom: none;
+    background: var(--bg);
+  }
+  .verdict-row:last-child { border-bottom: 2px solid var(--border); }
+  .verdict-pkg { font-weight: 900; min-width: 180px; font-size: 14px; }
+  .verdict-change { color: var(--muted); font-size: 12px; min-width: 120px; }
+  :root.dark .verdict-change { color: #8b949e; }
+  .verdict-reason { flex: 1; font-size: 12px; line-height: 1.5; }
+  .verdict-action { min-width: 140px; text-align: right; }
+
+  .chain-entry {
+    display: flex; gap: 0; border: 2px solid var(--border); border-bottom: none;
+    background: var(--bg);
+  }
+  .chain-entry:last-child { border-bottom: 2px solid var(--border); }
+  .chain-idx {
+    width: 56px; background: var(--panel); border-right: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 900;
+  }
+  .chain-body { flex: 1; padding: 14px 18px; }
+  .chain-hash { font-size: 12px; color: var(--accent); word-break: break-all; font-weight: 600; }
+  .chain-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  :root.dark .chain-meta { color: #8b949e; }
+  .chain-verify { padding: 14px 18px; display: flex; align-items: center; }
+
+  .product-intro {
+    border: 2px solid var(--border); padding: 24px; background: var(--bg); margin-bottom: 24px;
+  }
+  .product-intro h2 {
+    font-size: 16px; font-weight: 900; text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 16px;
+  }
+  .intro-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+  }
+  .intro-col h3 {
+    font-size: 12px; font-weight: 900; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 8px; color: var(--accent);
+  }
+  .intro-col p { font-size: 13px; color: var(--muted); line-height: 1.7; }
+  :root.dark .intro-col p { color: #8b949e; }
+  .intro-col code { background: var(--panel); padding: 2px 6px; border: 1px solid var(--border); font-size: 12px; }
+
+  .help-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .help-table th, .help-table td { padding: 10px 14px; text-align: left; border-bottom: 2px solid var(--border); }
+  .help-table th { background: var(--panel); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+
+  .chk {
+    width: 18px; height: 18px; border: 2px solid var(--border);
+    appearance: none; cursor: pointer; background: var(--bg);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 900;
+  }
+  .chk:checked { background: var(--text); color: var(--bg); }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--muted); border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text); }
+
+  .hidden { display: none !important; }
+
+  /* MONITOR PANEL */
+  .monitor-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 0; border: 2px solid var(--border); margin-bottom: 24px;
+  }
+  .monitor-card {
+    padding: 16px 20px; border-right: 2px solid var(--border);
+    background: var(--bg);
+  }
+  .monitor-card:last-child { border-right: none; }
+  .monitor-card:hover { background: var(--yellow); }
+  .monitor-dir { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .monitor-status { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  .monitor-status.active { color: var(--green); }
+  .monitor-status.stopped { color: var(--red); }
+  .monitor-pkgs { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  :root.dark .monitor-pkgs { color: #8b949e; }
+
+  /* ALERT BANNER */
+  .alert-banner {
+    background: var(--red); color: #fff;
+    padding: 14px 20px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; cursor: pointer;
+  }
+  .alert-banner:hover { background: #cc0000; }
+  .alert-banner .alert-icon { font-size: 20px; font-weight: 900; }
+  .alert-banner .alert-text { flex: 1; }
+  .alert-banner .alert-time { font-size: 11px; opacity: .8; }
+
+  /* COMPLETION PANEL */
+  .completion-panel {
+    border: 2px solid var(--green); padding: 20px 24px; background: var(--bg); margin-bottom: 24px;
+  }
+  .completion-panel h3 {
+    font-size: 14px; font-weight: 900; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 12px; color: var(--green);
+  }
+  .completion-meta {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px; font-size: 12px;
+  }
+  .completion-meta div { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .completion-meta div:last-child { border-bottom: none; }
+  .completion-meta strong { text-transform: uppercase; letter-spacing: 1px; font-size: 10px; display: block; margin-bottom: 4px; color: var(--muted); }
+  :root.dark .completion-meta strong { color: #8b949e; }
+</style>
+</head>
+<body>
+
+<button id="themeToggle" onclick="toggleTheme()">[ LIGHT ]</button>
+
+<header>
+  <div>
+    <div class="logo">SUPPLYGUARD</div>
+    <div class="logo-sub">AI-POWERED SUPPLY CHAIN DEFENSE // AGENT-BASED DECISION ENGINE</div>
+  </div>
+  <div class="header-meta">
+    <div>USER: lggyx</div>
+    <div>RUST stable ≥1.85 | SQLite | axum</div>
+    <div id="clock"></div>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-tab active" data-view="overview" onclick="go('overview')">总览</div>
+  <div class="nav-tab" data-view="monitor" onclick="go('monitor')">监控</div>
+  <div class="nav-tab" data-view="scan" onclick="go('scan')">扫描</div>
+  <div class="nav-tab" data-view="guard" onclick="go('guard')">守门</div>
+  <div class="nav-tab" data-view="audit" onclick="go('audit')">审计链</div>
+  <div class="nav-tab" data-view="help" onclick="go('help')">帮助</div>
+</nav>
+
+<main>
+
+  <!-- ==================== 总览 ==================== -->
+  <div class="view active" id="view-overview">
+    <div class="product-intro">
+      <h2>这个工具是做什么的 / WHY AGENT-BASED</h2>
+      <div class="intro-grid">
+        <div class="intro-col">
+          <h3>01 / 问题</h3>
+          <p>传统 SCA 工具只能匹配<strong>已知漏洞数据库</strong>。但供应链攻击正在升级：AI 幻觉包、0day、恶意投毒——<strong>这些在 CVE 有记录之前就已经在危害项目了</strong>。</p>
+        </div>
+        <div class="intro-col">
+          <h3>02 / 解法</h3>
+          <p>SupplyGuard 用 <strong>多 Agent 协作</strong> 做智能决策：Sentinel 守护边界、Analyst 深度分析、Auditor 综合裁决。不是跑规则，是<strong>像安全工程师一样思考</strong>，发现"看起来正常但实际可疑"的威胁。</p>
+        </div>
+        <div class="intro-col">
+          <h3>03 / 闭环</h3>
+          <p>每一次 Agent 裁决都被记录在 <code>HMAC-SHA256 审计链</code> 中，不可篡改。六个月后依然可以回放：Agent 看到了什么、为什么判断为风险、您最终如何裁决。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-header">监控状态 / MONITORING</div>
+    <div class="monitor-grid">
+      <div class="monitor-card">
+        <div class="monitor-dir">./frontend-app</div>
+        <div class="monitor-status active">● 监控中</div>
+        <div class="monitor-pkgs">128 个包 | 上次扫描: 2026-09-02 14:32</div>
+      </div>
+      <div class="monitor-card">
+        <div class="monitor-dir">./api-server</div>
+        <div class="monitor-status active">● 监控中</div>
+        <div class="monitor-pkgs">56 个包 | 上次扫描: 2026-09-02 11:15</div>
+      </div>
+      <div class="monitor-card">
+        <div class="monitor-dir">./legacy-module</div>
+        <div class="monitor-status stopped">■ 已停止</div>
+        <div class="monitor-pkgs">89 个包 | 上次扫描: 2026-09-01 18:45</div>
+      </div>
+    </div>
+
+    <div class="section-header">统计 / STATS</div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:0; border:2px solid var(--border); border-top:none; margin-bottom:24px;">
+      <div style="padding:16px 20px; border-right:2px solid var(--border); background:var(--bg);">
+        <div style="font-size:28px; font-weight:900;">12</div>
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-top:4px; font-weight:700;">Scans</div>
+      </div>
+      <div style="padding:16px 20px; border-right:2px solid var(--border); background:var(--bg);">
+        <div style="font-size:28px; font-weight:900;">347</div>
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-top:4px; font-weight:700;">Packages</div>
+      </div>
+      <div style="padding:16px 20px; border-right:2px solid var(--border); background:var(--bg);">
+        <div style="font-size:28px; font-weight:900; color:var(--green);">89%</div>
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-top:4px; font-weight:700;">Auto-Approved</div>
+      </div>
+      <div style="padding:16px 20px; border-right:2px solid var(--border); background:var(--bg);">
+        <div style="font-size:28px; font-weight:900; color:var(--orange);">8</div>
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-top:4px; font-weight:700;">Agent Review</div>
+      </div>
+      <div style="padding:16px 20px; background:var(--bg);">
+        <div style="font-size:28px; font-weight:900; color:var(--red);">3</div>
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-top:4px; font-weight:700;">Blocked</div>
+      </div>
+    </div>
+
+    <div class="section-header">最近扫描 / RECENT SCANS <span style="font-weight:400; font-size:11px; letter-spacing:0;">Agent 裁决结果</span></div>
+    <table style="border:2px solid var(--border); border-top:none; margin-bottom:24px;">
+      <thead><tr><th>时间</th><th>项目</th><th>包数</th><th>Allow</th><th>Review</th><th>Block</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>2026-09-02 14:32</td><td>./frontend-app</td><td>128</td>
+          <td><span class="badge allow">114</span></td><td><span class="badge review">12</span></td><td><span class="badge block">2</span></td>
+          <td><button class="action-btn" onclick="viewTimeline('scan-20260902-1432')" style="flex:none; padding:6px 14px;">VIEW</button></td>
+        </tr>
+        <tr>
+          <td>2026-09-02 11:15</td><td>./api-server</td><td>56</td>
+          <td><span class="badge allow">48</span></td><td><span class="badge review">8</span></td><td><span class="badge pending">0</span></td>
+          <td><button class="action-btn" onclick="viewTimeline('scan-20260902-1115')" style="flex:none; padding:6px 14px;">VIEW</button></td>
+        </tr>
+        <tr>
+          <td>2026-09-01 18:45</td><td>./legacy-module</td><td>89</td>
+          <td><span class="badge allow">65</span></td><td><span class="badge review">21</span></td><td><span class="badge block">3</span></td>
+          <td><button class="action-btn" onclick="viewTimeline('scan-20260901-1845')" style="flex:none; padding:6px 14px;">VIEW</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="border:2px solid var(--border); border-top:none; padding:24px; background:var(--bg);">
+      <div style="font-size:14px; font-weight:700; margin-bottom:16px;">开始使用 / GET STARTED</div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <button class="action-btn action-btn-lg primary" onclick="go('monitor')">MONITOR DIR</button>
+        <button class="action-btn action-btn-lg" onclick="go('scan')">SCAN ONCE</button>
+        <button class="action-btn action-btn-lg" onclick="go('guard')">GUARD DIFF</button>
+      </div>
+      <div style="font-size:12px; color:var(--muted); margin-top:12px;">
+        <strong>MONITOR</strong> = 指定目录持续监控，package-lock.json 变化时自动触发 Agent 分析<br/>
+        <strong>SCAN</strong> = 单次扫描整个项目依赖<br/>
+        <strong>GUARD</strong> = 对一次依赖变更做守门裁决
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MONITOR ==================== -->
+  <div class="view hidden" id="view-monitor">
+    <div id="monitor-step-1">
+      <div class="section-header">STEP 1 / 3 — 选择要监控的目录</div>
+      <div class="flow-step">
+        <div class="flow-step-num">01</div>
+        <div class="flow-step-body">
+          <div class="flow-step-title">MONITOR &lt;DIRECTORY&gt;</div>
+          <div class="flow-step-desc">指定包含 package-lock.json 的 npm 项目目录，SupplyGuard 将持续监听该目录的依赖变化</div>
+          <div class="flow-step-input">
+            <input type="text" id="monitor-path" value="./frontend-app" placeholder="./my-project" />
+            <button class="action-btn primary" onclick="monitorNext(2)" style="flex:none; padding:10px 24px;">NEXT →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="monitor-step-2" class="hidden">
+      <div class="section-header">STEP 2 / 3 — 监控配置</div>
+      <div class="flow-step">
+        <div class="flow-step-num">02</div>
+        <div class="flow-step-body">
+          <div class="flow-step-title">CONFIG</div>
+          <div class="flow-step-desc">目标目录：<strong id="monitor-target-display">./frontend-app</strong></div>
+          <div style="margin-top:14px; display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" class="chk" id="monitor-dev" checked />
+              <label for="monitor-dev" style="font-size:13px; cursor:pointer;">包含 devDependencies</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" class="chk" id="monitor-auto" checked />
+              <label for="monitor-auto" style="font-size:13px; cursor:pointer;">检测到变化时自动触发 Agent 分析</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" class="chk" id="monitor-notify" checked />
+              <label for="monitor-notify" style="font-size:13px; cursor:pointer;">变化时发送通知（浏览器 + 终端）</label>
+            </div>
+          </div>
+          <div class="flow-step-input" style="margin-top:16px;">
+            <button class="action-btn" onclick="monitorNext(1)" style="flex:none; padding:10px 24px;">← BACK</button>
+            <button class="action-btn primary" onclick="monitorNext(3)" style="flex:none; padding:10px 24px;">START MONITOR →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="monitor-step-3" class="hidden">
+      <div class="section-header">STEP 3 / 3 — 监控运行中 <span id="monitor-status" style="color:var(--green)">● 监控中</span></div>
+
+      <div class="terminal">
+        <div class="terminal-header"><span>MONITOR — ./frontend-app</span><span id="monitor-session-id">monitor-20260902-xxxx</span></div>
+        <div id="monitor-log">
+          <div class="terminal-line success">> 监控已启动，监听 package-lock.json 变化...</div>
+          <div class="terminal-line info">> 初始扫描完成：128 个包，0 个风险</div>
+        </div>
+        <div class="terminal-cursor" id="monitor-cursor"></div>
+      </div>
+
+      <div style="font-size:12px; color:var(--muted); margin-bottom:24px;">
+        监控已激活。当 <code>package-lock.json</code> 或 <code>package.json</code> 发生变化时，
+        Agent 将自动分析新增/变更/移除的包，并通知您做出裁决。
+      </div>
+
+      <!-- 模拟变化按钮 -->
+      <div style="border:2px solid var(--border); padding:16px 20px; background:var(--bg); margin-bottom:24px;">
+        <div style="font-size:13px; font-weight:700; margin-bottom:12px;">模拟场景 / SIMULATE EVENTS</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="action-btn" onclick="simulateChange('patch')">模拟 patch 升级（lodash 4.17.21）</button>
+          <button class="action-btn" onclick="simulateChange('cve')">模拟 CVE 风险（axios 1.6.0）</button>
+          <button class="action-btn" onclick="simulateChange('hallucination')">模拟幻觉包（fictional-pkg-xyz）</button>
+          <button class="action-btn danger" onclick="stopMonitor()">停止监控</button>
+        </div>
+      </div>
+
+      <!-- 变化通知 -->
+      <div id="change-alert" class="alert-banner hidden">
+        <div class="alert-icon">⚠</div>
+        <div class="alert-text">
+          <div>检测到依赖变化 — <span id="alert-detail">lodash 4.17.20 → 4.17.21</span></div>
+          <div style="font-size:11px; opacity:.8; margin-top:2px;">Agent 分析完成，需要您确认</div>
+        </div>
+        <div class="alert-time" id="alert-time">刚刚</div>
+      </div>
+
+      <!-- Agent 分析结果（变化后显示） -->
+      <div id="change-analysis" class="hidden">
+        <div class="section-header" style="margin-top:0;">Agent 分析结果 — 您的裁决</div>
+        <div class="agent-card">
+          <div class="agent-header">
+            <div class="agent-icon">🤖</div>
+            <div>
+              <div class="agent-title">AUDITOR AGENT — 变更分析</div>
+              <div class="agent-subtitle">自动触发 | Sentinel → Analyst → Auditor</div>
+            </div>
+          </div>
+          <div class="reasoning-block">
+            <div class="label">推理过程 / REASONING</div>
+            <div id="change-reasoning"></div>
+          </div>
+        </div>
+        <div id="change-verdicts"></div>
+        <div class="action-bar">
+          <button class="action-btn primary" onclick="confirmChange()">确认 + 提交审计</button>
+          <button class="action-btn" onclick="dismissChange()">忽略本次</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCAN FLOW ==================== -->
+  <div class="view hidden" id="view-scan">
+    <div id="scan-step-1">
+      <div class="section-header">STEP 1 / 4 — 选择要扫描的项目</div>
+      <div class="flow-step">
+        <div class="flow-step-num">01</div>
+        <div class="flow-step-body">
+          <div class="flow-step-title">SCAN &lt;DIRECTORY&gt;</div>
+          <div class="flow-step-desc">输入包含 package-lock.json 的 npm 项目目录路径</div>
+          <div class="flow-step-input">
+            <input type="text" id="scan-path" value="./frontend-app" placeholder="./my-project" />
+            <button class="action-btn primary" onclick="scanNext(2)" style="flex:none; padding:10px 24px;">NEXT →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="scan-step-2" class="hidden">
+      <div class="section-header">STEP 2 / 4 — 确认扫描范围</div>
+      <div class="flow-step">
+        <div class="flow-step-num">02</div>
+        <div class="flow-step-body">
+          <div class="flow-step-title">SCOPE</div>
+          <div class="flow-step-desc">目标目录：<strong id="scan-target-display">./frontend-app</strong></div>
+          <div style="margin-top:14px; display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" class="chk" id="scan-dev" checked />
+            <label for="scan-dev" style="font-size:13px; cursor:pointer;">包含 devDependencies</label>
+          </div>
+          <div class="flow-step-input" style="margin-top:16px;">
+            <button class="action-btn" onclick="scanNext(1)" style="flex:none; padding:10px 24px;">← BACK</button>
+            <button class="action-btn primary" onclick="scanNext(3)" style="flex:none; padding:10px 24px;">START SCAN →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="scan-step-3" class="hidden">
+      <div class="section-header">STEP 3 / 4 — Agent 分析中 <span id="scan-pct" style="color:var(--accent)">0%</span></div>
+      <div class="terminal">
+        <div class="terminal-header"><span>AGENT PIPELINE</span><span id="scan-session-id">scan-20260902-xxxx</span></div>
+        <div id="scan-log"></div>
+        <div class="terminal-cursor" id="scan-cursor"></div>
+      </div>
+    </div>
+
+    <div id="scan-step-4" class="hidden">
+      <div class="section-header">STEP 4 / 4 — Agent 推理结果 + 您的裁决</div>
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-icon">🤖</div>
+          <div>
+            <div class="agent-title">AUDITOR AGENT — 综合裁决</div>
+            <div class="agent-subtitle">Sentinel → Analyst → Hallucination → CVE → License → Auditor</div>
+          </div>
+        </div>
+        <div class="reasoning-block">
+          <div class="label">推理过程 / REASONING</div>
+          <div>
+            对 128 个包完成多信号分析：<br/>
+            • <strong>幻觉包检测</strong>：fictional-pkg-xyz@1.0.0 — 注册时间 &lt;7 天，词频异常，npm registry 无有效记录 → 判定为 AI 幻觉包抢注<br/>
+            • <strong>CVE 匹配</strong>：axios@1.6.0 命中 CVE-2023-45857 (Medium SSRF)，建议升级到 1.6.2+<br/>
+            • <strong>许可证</strong>：全部为 MIT/BSD/Apache-2.0，无法律风险<br/>
+            • <strong>发布行为</strong>：lodash 为 patch 升级，维护者正常，无异常
+          </div>
+          <div class="evidence">证据来源：OSV 本地缓存 + npm registry API + 发布历史时序分析</div>
+        </div>
+        <div class="reasoning-block">
+          <div class="label">Agent 建议 / VERDICT</div>
+          <div>
+            114 个包 ALLOW（低风险，自动放行）<br/>
+            12 个包 REVIEW（需人工确认，主要为 CVE Medium）<br/>
+            2 个包 BLOCK（幻觉包 + 高风险 CVE）
+          </div>
+        </div>
+      </div>
+      <div class="section-header" style="margin-top:0;">您的裁决 / YOUR DECISION</div>
+      <div style="border:2px solid var(--border); border-top:none; margin-bottom:24px;">
+        <table>
+          <thead><tr><th>包名</th><th>版本</th><th>许可证</th><th>CVE</th><th>幻觉风险</th><th>Agent 建议</th><th>您的裁决</th></tr></thead>
+          <tbody id="scan-result-tbody"></tbody>
+        </table>
+      </div>
+      <div class="action-bar">
+        <button class="action-btn primary" onclick="scanComplete()">全部确认 + 提交审计</button>
+        <button class="action-btn" onclick="alert('模拟：JSON 已导出')">EXPORT JSON</button>
+        <button class="action-btn" onclick="scanNext(1)">NEW SCAN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== GUARD FLOW ==================== -->
+  <div class="view hidden" id="view-guard">
+    <div id="guard-step-1">
+      <div class="section-header">STEP 1 / 4 — 上传依赖变更 Diff</div>
+      <div class="flow-step">
+        <div class="flow-step-num">01</div>
+        <div class="flow-step-body">
+          <div class="flow-step-title">GUARD &lt;DIFF FILE&gt;</div>
+          <div class="flow-step-desc">粘贴或上传 package-lock.json 的变更 diff</div>
+          <div class="flow-step-input">
+            <input type="text" id="guard-diff" value="./diffs/dep-change.diff" placeholder="./diffs/change.diff" />
+            <button class="action-btn primary" onclick="guardNext(2)" style="flex:none; padding:10px 24px;">PARSE →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="guard-step-2" class="hidden">
+      <div class="section-header">STEP 2 / 4 — 变更包识别</div>
+      <div class="flow-step">
+        <div class="flow-step-num">02</div>
+        <div class="flow-step-body">
+          <div class="flow-step-title">CHANGED PACKAGES</div>
+          <div class="flow-step-desc">从 diff 中解析出以下变更：</div>
+          <div id="guard-changes-list" style="margin-top:12px; border:2px solid var(--border);"></div>
+          <div class="flow-step-input" style="margin-top:16px;">
+            <button class="action-btn" onclick="guardNext(1)" style="flex:none; padding:10px 24px;">← BACK</button>
+            <button class="action-btn primary" onclick="guardNext(3)" style="flex:none; padding:10px 24px;">ANALYZE →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="guard-step-3" class="hidden">
+      <div class="section-header">STEP 3 / 4 — Agent 分析中</div>
+      <div class="terminal">
+        <div class="terminal-header"><span>AGENT PIPELINE</span><span>guard session</span></div>
+        <div id="guard-log"></div>
+        <div class="terminal-cursor" id="guard-cursor"></div>
+      </div>
+    </div>
+
+    <div id="guard-step-4" class="hidden">
+      <div class="section-header">STEP 4 / 4 — Agent 推理结果 + 您的最终确认</div>
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-icon">⚖️</div>
+          <div>
+            <div class="agent-title">AUDITOR AGENT — 综合裁决</div>
+            <div class="agent-subtitle">Sentinel → Analyst → Hallucination → License → Auditor</div>
+          </div>
+        </div>
+        <div class="reasoning-block">
+          <div class="label">推理过程 / REASONING</div>
+          <div>
+            • lodash 4.17.20→4.17.21：patch 升级，无 CVE，许可证 MIT，低风险 → <strong>ALLOW</strong><br/>
+            • axios 1.5.0→1.6.0：minor 升级，但命中 CVE-2023-45857 (Medium SSRF) → <strong>REVIEW</strong><br/>
+            • fictional-pkg-xyz 新增：注册时间 &lt;7天，词频异常，无 registry 记录 → <strong>BLOCK</strong>
+          </div>
+          <div class="evidence">Agent 置信度：lodash 98% / axios 75% / fictional-pkg-xyz 95%</div>
+        </div>
+      </div>
+      <div class="section-header" style="margin-top:0;">您的裁决 / YOUR DECISION</div>
+      <div style="border:2px solid var(--border); border-top:none; margin-bottom:24px;">
+        <table>
+          <thead><tr><th>包名</th><th>变更</th><th>Agent 推理</th><th>Agent 建议</th><th>您的裁决</th></tr></thead>
+          <tbody id="guard-verdicts"></tbody>
+        </table>
+      </div>
+      <div class="action-bar">
+        <button class="action-btn primary" onclick="guardComplete()">CONFIRM + 写入审计链</button>
+        <button class="action-btn danger" onclick="alert('模拟：已强制全部 Block')">FORCE BLOCK ALL</button>
+        <button class="action-btn" onclick="guardNext(1)">NEW GUARD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== COMPLETION ==================== -->
+  <div class="view hidden" id="view-completion">
+    <div class="completion-panel">
+      <h3>✓ 审计链已提交 / AUDIT COMMITTED</h3>
+      <div class="completion-meta">
+        <div><strong>Session ID</strong><span id="completion-session">scan-20260902-xxxx</span></div>
+        <div><strong>审计哈希</strong><span id="completion-hash">a3f2b8c9d4e5...</span></div>
+        <div><strong>写入时间</strong><span id="completion-time">2026-09-02 14:32:05 UTC</span></div>
+        <div><strong>裁决数量</strong><span id="completion-count">3 条</span></div>
+      </div>
+    </div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+      <button class="action-btn primary" onclick="go('audit')">查看审计链</button>
+      <button class="action-btn" onclick="go('overview')">返回总览</button>
+      <button class="action-btn" onclick="go('monitor')">继续监控</button>
+    </div>
+  </div>
+
+  <!-- ==================== TIMELINE ==================== -->
+  <div class="view hidden" id="view-timeline">
+    <div class="section-header">裁决时间线 / DECISION TIMELINE <span style="font-weight:400; font-size:11px; letter-spacing:0;" id="timeline-session-id">scan-20260902-1432</span></div>
+    <div class="terminal">
+      <div class="terminal-header"><span>SESSION LOG</span><span id="timeline-session-id2">scan-20260902-1432</span></div>
+      <div id="timeline-content"></div>
+    </div>
+  </div>
+
+  <!-- ==================== AUDIT ==================== -->
+  <div class="view hidden" id="view-audit">
+    <div class="section-header">审计链 / AUDIT CHAIN <span class="badge allow" style="margin-left:10px;">VERIFIED</span></div>
+    <div id="audit-content"></div>
+  </div>
+
+  <!-- ==================== HELP ==================== -->
+  <div class="view hidden" id="view-help">
+    <div class="section-header">命令手册 / COMMAND REFERENCE</div>
+    <div style="border:2px solid var(--border); border-top:none;">
+      <table class="help-table">
+        <thead><tr><th>命令</th><th>语法</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><strong>monitor</strong></td><td>monitor &lt;dir&gt;</td><td>指定目录持续监控，依赖变化时自动触发 Agent 分析</td></tr>
+          <tr><td><strong>scan</strong></td><td>scan &lt;dir&gt;</td><td>单次扫描 npm 项目，Agent 分析后用户逐条裁决</td></tr>
+          <tr><td><strong>guard</strong></td><td>guard &lt;diff&gt;</td><td>对依赖变更做 Agent 守门裁决</td></tr>
+          <tr><td><strong>overview</strong></td><td>overview</td><td>总览仪表：监控状态 + 统计 + 最近扫描</td></tr>
+          <tr><td><strong>timeline</strong></td><td>timeline &lt;id&gt;</td><td>查看扫描会话的 Agent 推理时间线</td></tr>
+          <tr><td><strong>audit</strong></td><td>audit</td><td>审计链查看 + 完整性验证</td></tr>
+          <tr><td><strong>help</strong></td><td>help</td><td>显示本手册</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const saved = localStorage.getItem('sg-theme') || 'dark';
+  document.documentElement.classList.toggle('dark', saved === 'dark');
+  document.getElementById('themeToggle').textContent = saved === 'dark' ? '[ LIGHT ]' : '[ DARK ]';
+  function toggleTheme() {
+    const isDark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('sg-theme', isDark ? 'dark' : 'light');
+    document.getElementById('themeToggle').textContent = isDark ? '[ LIGHT ]' : '[ DARK ]';
+  }
+
+  function tick() {
+    const el = document.getElementById('clock');
+    if (el) el.textContent = new Date().toLocaleString('zh-CN');
+  }
+  tick(); setInterval(tick, 1000);
+
+  function go(view, param) {
+    document.querySelectorAll('.view').forEach(v => {
+      v.classList.remove('active', 'hidden');
+    });
+    const el = document.getElementById('view-' + view);
+    el.classList.add('active');
+    el.classList.remove('hidden');
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    
+    if (view === 'monitor') monitorNext(1);
+    if (view === 'scan') scanNext(1);
+    if (view === 'guard') guardNext(1);
+    if (view === 'audit') renderAudit();
+    if (view === 'timeline' && param) viewTimeline(param);
+  }
+
+  // ===== MONITOR =====
+  function monitorNext(step) {
+    ['monitor-step-1','monitor-step-2','monitor-step-3'].forEach(id => {
+      document.getElementById(id).classList.add('hidden');
+    });
+    document.getElementById('monitor-step-' + step).classList.remove('hidden');
+    if (step === 2) document.getElementById('monitor-target-display').textContent = document.getElementById('monitor-path').value || './frontend-app';
+    if (step === 3) startMonitor();
+  }
+
+  function startMonitor() {
+    document.getElementById('monitor-session-id').textContent = 'monitor-' + Date.now().toString(36);
+    const log = document.getElementById('monitor-log');
+    log.innerHTML = '<div class="terminal-line success">> 监控已启动，监听 package-lock.json 变化...</div>';
+  }
+
+  function stopMonitor() {
+    const log = document.getElementById('monitor-log');
+    log.innerHTML += '<div class="terminal-line error">> 监控已停止</div>';
+    document.getElementById('monitor-status').textContent = '■ 已停止';
+    document.getElementById('monitor-status').className = 'monitor-status stopped';
+  }
+
+  function simulateChange(type) {
+    const alertEl = document.getElementById('change-alert');
+    const analysisEl = document.getElementById('change-analysis');
+    alertEl.classList.remove('hidden');
+    analysisEl.classList.remove('hidden');
+
+    const changes = {
+      patch: { detail: 'lodash 4.17.20 → 4.17.21', reasoning: 'lodash 从 4.17.20 升级到 4.17.21（patch 升级），无 CVE，许可证 MIT，低风险。', verdict: 'ALLOW' },
+      cve: { detail: 'axios 1.5.0 → 1.6.0（CVE-2023-45857）', reasoning: 'axios 从 1.5.0 升级到 1.6.0，但命中 CVE-2023-45857 (Medium SSRF)。建议升级到 1.6.2+。', verdict: 'REVIEW' },
+      hallucination: { detail: '发现新包 fictional-pkg-xyz@1.0.0', reasoning: 'fictional-pkg-xyz 注册时间 <7天，词频异常，npm registry 无有效记录，极高概率为 AI 幻觉包抢注（slopsquatting）。', verdict: 'BLOCK' },
+    };
+
+    const c = changes[type];
+    document.getElementById('alert-detail').textContent = c.detail;
+    document.getElementById('alert-time').textContent = '刚刚';
+    document.getElementById('change-reasoning').innerHTML = c.reasoning;
+
+    const verdicts = {
+      patch: '<div class="verdict-row"><div class="verdict-pkg">lodash</div><div class="verdict-change">4.17.20 → 4.17.21</div><div class="verdict-reason">patch 升级，无 CVE，许可证 MIT，低风险</div><div class="verdict-action"><span class="badge allow">ALLOW</span></div></div>',
+      cve: '<div class="verdict-row"><div class="verdict-pkg">axios</div><div class="verdict-change">1.5.0 → 1.6.0</div><div class="verdict-reason">命中 CVE-2023-45857 (Medium SSRF)，建议升级到 1.6.2+</div><div class="verdict-action"><span class="badge review">REVIEW</span></div></div>',
+      hallucination: '<div class="verdict-row"><div class="verdict-pkg">fictional-pkg-xyz</div><div class="verdict-change">— → 1.0.0</div><div class="verdict-reason">疑似幻觉包，注册 <7天，无 registry 记录，极高风险</div><div class="verdict-action"><span class="badge block">BLOCK</span></div></div>',
+    };
+    document.getElementById('change-verdicts').innerHTML = verdicts[type];
+
+    const log = document.getElementById('monitor-log');
+    log.innerHTML += `<div class="terminal-line warn">> 检测到依赖变化: ${c.detail}</div>`;
+    log.innerHTML += `<div class="terminal-line info">> Agent 分析中...</div>`;
+    log.innerHTML += `<div class="terminal-line success">> Agent 分析完成: ${c.verdict}</div>`;
+    log.parentElement.scrollTop = log.parentElement.scrollHeight;
+  }
+
+  function confirmChange() {
+    const alertEl = document.getElementById('change-alert');
+    alertEl.classList.add('hidden');
+    document.getElementById('change-analysis').classList.add('hidden');
+    const log = document.getElementById('monitor-log');
+    log.innerHTML += '<div class="terminal-line success">> 用户已确认，写入审计链</div>';
+    log.parentElement.scrollTop = log.parentElement.scrollHeight;
+    alert('模拟：变更已确认，写入审计链');
+  }
+
+  function dismissChange() {
+    const alertEl = document.getElementById('change-alert');
+    alertEl.classList.add('hidden');
+    document.getElementById('change-analysis').classList.add('hidden');
+    const log = document.getElementById('monitor-log');
+    log.innerHTML += '<div class="terminal-line info">> 用户忽略本次变更</div>';
+    log.parentElement.scrollTop = log.parentElement.scrollHeight;
+  }
+
+  // ===== SCAN =====
+  function scanNext(step) {
+    ['scan-step-1','scan-step-2','scan-step-3','scan-step-4'].forEach(id => {
+      document.getElementById(id).classList.add('hidden');
+    });
+    document.getElementById('scan-step-' + step).classList.remove('hidden');
+    if (step === 2) document.getElementById('scan-target-display').textContent = document.getElementById('scan-path').value || './frontend-app';
+    if (step === 3) runScanProgress();
+  }
+
+  function runScanProgress() {
+    const log = document.getElementById('scan-log');
+    const cursor = document.getElementById('scan-cursor');
+    const pctEl = document.getElementById('scan-pct');
+    log.innerHTML = ''; pctEl.textContent = '0%'; cursor.style.display = 'inline-block';
+    const steps = [
+      [10, 'info', '> Sentinel: 初始化扫描会话，标记目标目录为 UNTRUSTED'],
+      [20, 'info', '> sbom-build: 解析 package-lock.json v3...'],
+      [35, 'info', '> sbom-build: 提取 128 个包 + 版本 + 依赖树（含 transitive）'],
+      [50, 'info', '> Analyst: 开始多信号分析...'],
+      [60, 'warn', '> Hallucination Agent: 发现 1 个疑似 — fictional-pkg-xyz@1.0.0（注册 <7天，词频异常，无 registry 记录）'],
+      [70, 'info', '> CVE Agent: 查询 OSV 本地缓存（127 个包无 CVE，1 个待确认）'],
+      [80, 'info', '> License Agent: 128 个包全部为 MIT/BSD/Apache-2.0，无冲突'],
+      [90, 'success', '> Auditor: 综合裁决完成（Allow: 114 / Review: 12 / Block: 2）'],
+      [100, 'accent', '> scan complete. session_id: scan-' + Date.now().toString(36)],
+    ];
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i >= steps.length) {
+        clearInterval(timer); cursor.style.display = 'none';
+        setTimeout(() => scanNext(4), 600); return;
+      }
+      const [pct, cls, msg] = steps[i++];
+      pctEl.textContent = pct + '%';
+      const div = document.createElement('div');
+      div.className = 'terminal-line ' + cls; div.textContent = msg;
+      log.appendChild(div);
+      log.parentElement.scrollTop = log.parentElement.scrollHeight;
+    }, 500);
+  }
+
+  function scanComplete() {
+    document.getElementById('completion-session').textContent = 'scan-' + Date.now().toString(36);
+    document.getElementById('completion-hash').textContent = Math.random().toString(36).substring(2, 10) + '...';
+    document.getElementById('completion-time').textContent = new Date().toISOString();
+    document.getElementById('completion-count').textContent = '3 条';
+    go('completion');
+  }
+
+  function showScanResults() {
+    const pkgs = [
+      { name: 'lodash', ver: '4.17.21', license: 'MIT', cve: '—', halluc: '低', verdict: 'allow', reason: 'patch 升级，无 CVE，许可证 MIT' },
+      { name: 'axios', ver: '1.6.0', license: 'MIT', cve: 'CVE-2023-45857 (Medium)', halluc: '低', verdict: 'review', reason: 'SSRF 风险，建议升级到 1.6.2+' },
+      { name: 'fictional-pkg-xyz', ver: '1.0.0', license: '—', cve: '疑似幻觉包', halluc: '极高', verdict: 'block', reason: '注册时间 <7天，词频异常，无 registry 记录' },
+    ];
+    const labels = { allow: 'ALLOW', review: 'REVIEW', block: 'BLOCK' };
+    document.getElementById('scan-result-tbody').innerHTML = pkgs.map(p => `
+      <tr class="${p.verdict}-row">
+        <td><strong>${p.name}</strong></td><td>${p.ver}</td><td>${p.license}</td>
+        <td>${p.cve}</td><td><span class="badge ${p.verdict}">${p.halluc}</span></td>
+        <td><span class="badge ${p.verdict}">${labels[p.verdict]}</span></td>
+        <td>
+          <select style="background:var(--bg); border:2px solid var(--border); color:var(--text); padding:6px 10px; font-family:inherit; font-size:12px; font-weight:700;">
+            <option value="allow">ALLOW</option><option value="review">REVIEW</option><option value="block">BLOCK</option>
+          </select>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // ===== GUARD =====
+  function guardNext(step) {
+    ['guard-step-1','guard-step-2','guard-step-3','guard-step-4'].forEach(id => {
+      document.getElementById(id).classList.add('hidden');
+    });
+    document.getElementById('guard-step-' + step).classList.remove('hidden');
+    if (step === 2) showGuardChanges();
+    if (step === 3) runGuardProgress();
+    if (step === 4) showGuardVerdicts();
+  }
+
+  function showGuardChanges() {
+    const changes = [
+      { pkg: 'lodash', from: '4.17.20', to: '4.17.21', type: 'patch', risk: 'low' },
+      { pkg: 'axios', from: '1.5.0', to: '1.6.0', type: 'minor', risk: 'medium' },
+      { pkg: 'fictional-pkg-xyz', from: '—', to: '1.0.0', type: 'add', risk: 'critical' },
+    ];
+    const badges = { low: 'allow', medium: 'review', critical: 'block' };
+    const labels = { low: 'LOW', medium: 'MEDIUM', critical: 'CRITICAL' };
+    document.getElementById('guard-changes-list').innerHTML = changes.map(c => `
+      <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:2px solid var(--border);">
+        <div style="font-weight:700; min-width:180px;">${c.pkg}</div>
+        <div style="color:var(--muted); font-size:12px; min-width:120px;">${c.from} → ${c.to}</div>
+        <div><span class="badge info">${c.type.toUpperCase()}</span></div>
+        <div style="margin-left:auto;"><span class="badge ${badges[c.risk]}">${labels[c.risk]}</span></div>
+      </div>
+    `).join('');
+  }
+
+  function runGuardProgress() {
+    const log = document.getElementById('guard-log');
+    const cursor = document.getElementById('guard-cursor');
+    log.innerHTML = ''; cursor.style.display = 'inline-block';
+    const steps = [
+      [20, 'info', '> Sentinel: 解析 diff，标记 3 个变更包为 UNTRUSTED'],
+      [40, 'info', '> Analyst: SBOM 比对 + 依赖树增量分析...'],
+      [60, 'warn', '> Hallucination: fictional-pkg-xyz 注册时间 <7天，词频异常，无 registry 记录'],
+      [80, 'info', '> License: 3 个包均为 MIT / 未知，无冲突'],
+      [100, 'success', '> Auditor: 综合裁决完成（1 Allow / 1 Review / 1 Block）'],
+    ];
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i >= steps.length) {
+        clearInterval(timer); cursor.style.display = 'none';
+        setTimeout(() => guardNext(4), 600); return;
+      }
+      const [pct, cls, msg] = steps[i++];
+      const div = document.createElement('div');
+      div.className = 'terminal-line ' + cls; div.textContent = msg;
+      log.appendChild(div);
+      log.parentElement.scrollTop = log.parentElement.scrollHeight;
+    }, 500);
+  }
+
+  function showGuardVerdicts() {
+    const verdicts = [
+      { pkg: 'lodash', change: '4.17.20 → 4.17.21', verdict: 'Allow', reason: 'patch 升级，无 CVE，许可证 MIT，低风险', cls: 'allow' },
+      { pkg: 'axios', change: '1.5.0 → 1.6.0', verdict: 'Review', reason: 'CVE-2023-45857 (Medium SSRF)，建议升级到 1.6.2+', cls: 'review' },
+      { pkg: 'fictional-pkg-xyz', change: '— → 1.0.0', verdict: 'Block', reason: '疑似幻觉包，注册 <7天，无 registry 记录，极高风险', cls: 'block' },
+    ];
+    const labels = { Allow: 'ALLOW', Review: 'REVIEW', Block: 'BLOCK' };
+    document.getElementById('guard-verdicts').innerHTML = verdicts.map(v => `
+      <div class="verdict-row">
+        <div class="verdict-pkg">${v.pkg}</div>
+        <div class="verdict-change">${v.change}</div>
+        <div class="verdict-reason">${v.reason}</div>
+        <div class="verdict-action"><span class="badge ${v.cls}">${labels[v.verdict]}</span></div>
+      </div>
+    `).join('');
+  }
+
+  function guardComplete() {
+    document.getElementById('completion-session').textContent = 'guard-' + Date.now().toString(36);
+    document.getElementById('completion-hash').textContent = Math.random().toString(36).substring(2, 10) + '...';
+    document.getElementById('completion-time').textContent = new Date().toISOString();
+    document.getElementById('completion-count').textContent = '3 条';
+    go('completion');
+  }
+
+  // ===== TIMELINE =====
+  function viewTimeline(id) {
+    go('timeline');
+    document.getElementById('timeline-session-id').textContent = id;
+    document.getElementById('timeline-session-id2').textContent = id;
+    const events = [
+      { time: '14:32:01', title: 'Sentinel: 初始化', desc: '标记目标目录为 UNTRUSTED，剥离零宽字符', type: 'info' },
+      { time: '14:32:02', title: 'SBOM 构建', desc: '解析 package-lock.json v3，提取 128 个包', type: 'info' },
+      { time: '14:32:03', title: 'Hallucination Agent', desc: '发现 fictional-pkg-xyz 疑似幻觉包（注册 <7天）', type: 'warn' },
+      { time: '14:32:04', title: 'CVE Agent', desc: 'axios@1.6.0 命中 CVE-2023-45857 (Medium)', type: 'warn' },
+      { time: '14:32:05', title: 'License Agent', desc: '128 个包全部合规', type: 'info' },
+      { time: '14:32:06', title: 'Auditor: 综合裁决', desc: '1 Allow / 1 Review / 1 Block → 写入审计链', type: 'success' },
+    ];
+    document.getElementById('timeline-content').innerHTML = events.map(e => `
+      <div class="terminal-line ${e.type}">[${e.time}] <strong>${e.title}:</strong> ${e.desc}</div>
+    `).join('');
+  }
+
+  // ===== AUDIT =====
+  function renderAudit() {
+    const entries = [
+      { idx: 1, hash: 'a3f2b8c9d4e5...', session: 'scan-20260902-1432', decision: 'Block', target: 'fictional-pkg-xyz@1.0.0', reason: 'hallucination + no registry record', ts: '2026-09-02T14:32:05Z' },
+      { idx: 2, hash: 'b7e4c1d2f8a9...', session: 'scan-20260902-1432', decision: 'Review', target: 'axios@1.6.0', reason: 'CVE-2023-45857 (Medium)', ts: '2026-09-02T14:32:03Z' },
+      { idx: 3, hash: 'c9f5d3e1b7a2...', session: 'scan-20260902-1115', decision: 'Allow', target: './api-server (56 packages)', reason: 'all clear', ts: '2026-09-02T11:15:22Z' },
+    ];
+    document.getElementById('audit-content').innerHTML = entries.map(e => `
+      <div class="chain-entry">
+        <div class="chain-idx">#${e.idx}</div>
+        <div class="chain-body">
+          <div class="chain-hash">${e.hash}</div>
+          <div class="chain-meta">session: ${e.session} | target: ${e.target} | reason: ${e.reason} | ${e.ts}</div>
+        </div>
+        <div class="chain-verify"><span class="badge allow">VERIFIED</span></div>
+      </div>
+    `).join('');
+  }
+</script>
+
+</body>
+</html>
