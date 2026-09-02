@@ -1,8 +1,21 @@
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::RwLock;
+
+use crate::agents::analyst::Analyst;
+use crate::agents::auditor::Auditor;
+use crate::agents::hallucination::HallucinationAgent;
+use crate::agents::cve::CveAgent;
+use crate::agents::license::LicenseAgent;
+use crate::agents::sentinel::Sentinel;
+use crate::audit::AuditChain;
+use crate::mcp::{NpmLocal, OsvLocal, SpdxLocal};
+use crate::models::session::SessionState;
+use crate::store::SessionStore;
 
 /// 编排层错误
 #[derive(Debug, Error)]
-pub enum PipelineError {
+pub enum OrchestratorError {
     #[error("skill failure: {0}")]
     Skill(String),
 
@@ -17,14 +30,21 @@ pub enum PipelineError {
 }
 
 pub struct Orchestrator {
-    // TODO: 初始化 SessionStore、AuditChain、Agent 管道
+    store: Arc<SessionStore>,
+    audit_chain: Arc<RwLock<AuditChain>>,
 }
 
 impl Orchestrator {
-    pub async fn new() -> anyhow::Result<Self> {
-        // TODO: 初始化组件
-        Ok(Self {})
+    pub fn new() -> Result<Self, OrchestratorError> {
+        // TODO: 初始化 SessionStore 和 AuditChain
+        Ok(Self {
+            store: Arc::new(
+                SessionStore::new(".supplyguard/sessions.db")
+                    .map_err(|e| OrchestratorError::Skill(e.to_string()))?,
+            ),
+            audit_chain: Arc::new(RwLock::new(AuditChain::new(b"supplyguard-secret-key"))),
+        })
     }
 
-    // TODO: scan / guard / monitor / overview / timeline / audit 方法
+    // TODO: 实现 scan / guard / monitor / overview / timeline / audit 方法
 }

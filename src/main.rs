@@ -53,14 +53,20 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter("supplyguard=info")
         .init();
 
     let cli = Cli::parse();
 
-    let orchestrator = Orchestrator::new().await?;
+    let orchestrator = match Orchestrator::new().await {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("初始化失败: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     match cli.command {
         Commands::Scan { path, json, include_dev } => {
@@ -90,6 +96,4 @@ async fn main() -> anyhow::Result<()> {
             // TODO: 实现 audit 逻辑
         }
     }
-
-    Ok(())
 }
