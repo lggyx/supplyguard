@@ -4,6 +4,7 @@
 //! Business logic lives in the library modules and the runtime orchestrator.
 
 use clap::{Parser, Subcommand, ValueEnum};
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use supplyguard::models::ids::SessionId;
 use supplyguard::models::messages::{EventSource, Verdict};
 use supplyguard::runtime::orchestrator::{GuardOutcome, LocalOrchestrator, RuntimeTools};
 use supplyguard::security::injection::InjectionDetector;
+use supplyguard::mcp_transport::run_stdio;
 
 /// Exit code: verdict allow (or informational success).
 const EXIT_ALLOW: i32 = 0;
@@ -79,6 +81,8 @@ pub enum Command {
         #[arg(long)]
         audit_db: Option<PathBuf>,
     },
+    /// Start the MCP server over stdio (for AI assistants).
+    Mcp {},
     /// Start the local web console (default bind 127.0.0.1:7878).
     Serve {
         /// Socket address to bind; override only with an explicit flag.
@@ -124,7 +128,14 @@ fn run() -> i32 {
             }
         },
         Command::Serve { bind } => run_serve(bind),
+        Command::Mcp {} => run_mcp(),
     }
+}
+
+/// Boots the MCP server over stdio.
+fn run_mcp() -> ! {
+    eprintln!("supplyguard: starting MCP server on stdio",);
+    run_stdio()
 }
 
 /// Boots the web console: sync runtime + broadcast bridge + axum server.

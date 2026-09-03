@@ -10,6 +10,7 @@ pub mod agents;
 pub mod audit;
 pub mod config;
 pub mod mcp;
+pub mod mcp_transport;
 pub mod models;
 pub mod runtime;
 pub mod security;
