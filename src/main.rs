@@ -140,6 +140,7 @@ fn run_mcp() -> ! {
 
 /// Boots the web console: sync runtime + broadcast bridge + axum server.
 fn run_serve(bind: String) -> i32 {
+    let config = match Config::load() {
         Ok(config) => config,
         Err(err) => {
             eprintln!("supplyguard: error: configuration invalid: {err}");
