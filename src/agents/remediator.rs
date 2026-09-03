@@ -1,4 +1,3 @@
-use crate::agents::remediator::RemediatorError;
 use thiserror::Error;
 
 /// Remediator 错误

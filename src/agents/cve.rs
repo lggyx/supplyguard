@@ -1,4 +1,3 @@
-use crate::agents::cve::CveError;
 use crate::mcp::{McpError, VulnSource};
 use thiserror::Error;
 
@@ -28,17 +27,7 @@ impl CveAgent {
             .query_vulns(package, version, "npm")
             .map_err(|e| CveError::Mcp(e))?;
 
-        if vulns.is_empty() {
-            return Ok(CveResult {
-                package: package.to_string(),
-                version: version.to_string(),
-                has_cve: false,
-                vulns: Vec::new(),
-                severity: "none".to_string(),
-                reasoning: format!("{}@{} 无已知 CVE", package, version),
-            });
-        }
-
+        let vulns_for_len = vulns.clone();
         let max_severity = vulns.iter().map(|v| v.severity.as_str()).max().unwrap_or("low");
 
         Ok(CveResult {
@@ -51,7 +40,7 @@ impl CveAgent {
                 "{}@{} 命中 {} 个 CVE，最高严重级别: {}",
                 package,
                 version,
-                vulns.len(),
+                vulns_for_len.len(),
                 max_severity
             ),
         })

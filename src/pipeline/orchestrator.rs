@@ -8,10 +8,10 @@ use crate::agents::cve::CveAgent;
 use crate::agents::hallucination::HallucinationAgent;
 use crate::agents::license::LicenseAgent;
 use crate::agents::sentinel::Sentinel;
-use crate::audit::AuditChain;
+use crate::audit::chain::AuditChain;
 use crate::mcp::{NpmLocal, OsvLocal, SpdxLocal};
 use crate::models::session::SessionState;
-use crate::store::SessionStore;
+use crate::store::session::SessionStore;
 
 /// 编排层错误
 #[derive(Debug, Error)]

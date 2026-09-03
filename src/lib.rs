@@ -10,7 +10,7 @@ pub mod audit;
 pub mod output;
 pub mod models;
 
-pub use pipeline::Orchestrator;
+pub use pipeline::orchestrator::Orchestrator;
 pub use agents::analyst::Analyst;
 pub use agents::auditor::{Auditor, Verdict};
 pub use agents::cve::CveAgent;

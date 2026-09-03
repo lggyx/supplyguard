@@ -1,4 +1,3 @@
-use crate::agents::auditor::AuditorError;
 use serde::Serialize;
 
 /// Auditor 错误

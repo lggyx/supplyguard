@@ -1,9 +1,7 @@
 use crate::agents::sentinel::SentinelError;
-use crate::models::messages::{DependencyChange, EventSource};
-use crate::pipeline::OrchestratorError;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher, Event as NotifyEvent};
+use crate::models::messages::EventSource;
+use crate::pipeline::orchestrator::OrchestratorError;
 use std::path::PathBuf;
-use std::sync::mpsc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

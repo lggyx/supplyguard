@@ -1,4 +1,3 @@
-use crate::agents::license::LicenseError;
 use crate::mcp::LicenseDb;
 use thiserror::Error;
 
@@ -28,18 +27,19 @@ impl LicenseAgent {
         })?;
 
         let is_known = self.license_db.is_known(&canonical);
+        let reasoning = if is_known {
+            format!("{} 许可证 {} 合规", package, canonical)
+        } else {
+            format!("{} 许可证 {} 未知，需人工确认", package, canonical)
+        };
 
         Ok(LicenseResult {
             package: package.to_string(),
             original_license: license.to_string(),
-            normalized_license: canonical,
+            normalized_license: canonical.clone(),
             is_known,
             compliant: is_known,
-            reasoning: if is_known {
-                format!("{} 许可证 {} 合规", package, canonical)
-            } else {
-                format!("{} 许可证 {} 未知，需人工确认", package, canonical)
-            },
+            reasoning,
         })
     }
 }

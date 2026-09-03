@@ -45,6 +45,11 @@ pub struct Finding {
     pub created_at: i64,
 }
 
+#[derive(Debug)]
+pub struct SessionStore {
+    conn: Connection,
+}
+
 impl SessionStore {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;

@@ -1,5 +1,18 @@
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// 配置错误
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("parse error: {0}")]
+    Parse(#[from] toml::de::Error),
+}
+
+pub type Result<T> = std::result::Result<T, ConfigError>;
 
 /// SupplyGuard 配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +65,7 @@ impl Default for Config {
 
 impl Config {
     /// 从文件加载配置
-    pub fn load(path: &str) -> anyhow::Result<Self> {
+    pub fn load(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Config = toml::from_str(&content)?;
         Ok(config)

@@ -1,4 +1,3 @@
-use crate::agents::hallucination::HallucinationError;
 use crate::mcp::{McpError, RegistryClient};
 use thiserror::Error;
 
